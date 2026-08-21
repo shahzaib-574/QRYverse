@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.tools/
+.env
+.env*.local
+.idea/
+*.apk
+*.aab
+*.jks
+*.keystore
+android/.gradle/
+android/app/build/
+android/local.properties
+output/
+tmp/
