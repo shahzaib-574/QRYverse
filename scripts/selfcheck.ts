@@ -2,22 +2,29 @@ import assert from 'node:assert/strict';
 import { analysePayload, contactPayloadToVcard, createPayload } from '../src/lib/qr';
 import {
   applyTrackAction,
+  collectionActivityCsv,
   collectionCsv,
+  isTrackEvidencePhotoDataUrl,
+  maxTrackActivityEvents,
+  maxTrackEvidencePhotoCharacters,
+  maxTrackInspectionsPerRecord,
   nextRecordCode,
   maxTrackWorkspaces,
   parseTrackPayload,
   trackPayload,
   TrackStorageError,
+  updateTrackRecordDetails,
   writeTrackCollections,
   type TrackCollection,
 } from '../src/track/store';
 import { scrubDiagnosticText } from '../src/lib/scrub';
-import { LocalStorageWriteError, maxHistoryItems, upsertHistoryItem, writeHistory, writePreferences, type SavedItem } from '../src/lib/storage';
+import { LocalStorageWriteError, maxHistoryItems, maxHistoryPayloadCharacters, upsertHistoryItem, writeHistory, writePreferences, type SavedItem } from '../src/lib/storage';
 import { LocalOnlySyncAdapter, type SyncEnvelope } from '../src/sync/types';
 import { applyImportedRecords, buildImportPreview, limitImportedRecords, mergeBackup, parseBackup, parseCsv, suggestMapping } from '../src/track/import';
 import { generateLabelPdf } from '../src/track/labels';
 import { BusinessStorageError, businessBackupJson, campaignPayload, campaignScanCount, deriveAlerts, maxBusinessCampaigns, maxBusinessMembers, operationsSummary, parseBusinessBackup, parseCampaignPayload, portfolioCsv, recordCampaignScan, recordNeedsAttention, writeBusinessState, type BusinessState } from '../src/business/store';
 import { generateOperationsReportPdf } from '../src/business/reports';
+import { campaignDraftMatchesSaved } from '../src/business/campaign-integrity';
 import { resolveCloudAccountAvailability, resolveDefaultCloudApiBase } from '../src/cloud/config';
 import { initializeBilling, purchasePlan, restoreBilling } from '../src/lib/billing';
 import { lastItem } from '../src/lib/collections';
@@ -77,6 +84,14 @@ assert.ok(insecureLink.riskReasons.length >= 2);
 
 const deceptiveLink = analysePayload('https://user:secret@example.com/verify-account');
 assert.equal(deceptiveLink.risk, 'danger');
+const credentialIpLink = analysePayload('https://user:secret@127.0.0.1/private');
+assert.equal(credentialIpLink.kind, 'link');
+assert.equal(credentialIpLink.risk, 'danger');
+assert.equal(credentialIpLink.actionLabel, 'Open anyway');
+const localLink = analysePayload(createPayload('link', { url: 'http://localhost:8787/status' }));
+assert.equal(localLink.kind, 'link');
+assert.equal(localLink.risk, 'caution');
+assert.equal(localLink.host, 'localhost');
 
 const wifi = analysePayload('WIFI:T:WPA;S:Studio;P:secret;;');
 assert.equal(wifi.kind, 'wifi');
@@ -118,10 +133,36 @@ const collection: TrackCollection = {
 assert.deepEqual(parseTrackPayload(trackPayload('workshop', 'drill')), { collectionId: 'workshop', recordId: 'drill' });
 assert.deepEqual(parseTrackPayload('https://app.qry.local/track/workshop/drill'), { collectionId: 'workshop', recordId: 'drill' });
 assert.equal(nextRecordCode(collection), 'AST-002');
+assert.equal(nextRecordCode({ ...collection, records: [{ ...collection.records[0], code: 'ast-002' }] }), 'AST-003');
 const checkout = applyTrackAction(collection, 'drill', 'checkout');
 assert.equal(checkout.collection.records[0].status, 'checked_out');
 assert.equal(checkout.collection.activity[0].action, 'Checked out');
 assert.match(collectionCsv(checkout.collection), /"AST-001","Cordless drill","checked_out"/);
+assert.match(collectionActivityCsv(checkout.collection), /"AST-001","Cordless drill","Checked out","Asset marked as checked out"/);
+const editedCheckout = updateTrackRecordDetails(checkout.collection, 'drill', {
+  name: 'Updated drill', quantity: 1, location: 'Shelf B', notes: 'Calibrated', assignee: 'Amina', dueAt: 86_400_000,
+  intervalDays: 30, priority: 'high', checklist: ['Inspect chuck'], contact: 'amina@example.com', reference: 'TOOL-9',
+});
+assert.equal(editedCheckout.records[0].id, 'drill');
+assert.equal(editedCheckout.records[0].code, 'AST-001');
+assert.equal(editedCheckout.records[0].status, 'checked_out');
+assert.equal(editedCheckout.records[0].name, 'Updated drill');
+assert.equal(editedCheckout.records[0].reference, 'TOOL-9');
+assert.deepEqual(editedCheckout.activity, checkout.collection.activity);
+const inventoryEdit = updateTrackRecordDetails({
+  ...collection,
+  template: 'inventory',
+  records: [{ ...collection.records[0], code: 'INV-001', status: 'in_stock' }],
+}, 'drill', {
+  ...collection.records[0],
+  quantity: 0,
+});
+assert.equal(inventoryEdit.records[0].status, 'out_of_stock');
+const restockedInventoryEdit = updateTrackRecordDetails(inventoryEdit, 'drill', {
+  ...inventoryEdit.records[0],
+  quantity: 2,
+});
+assert.equal(restockedInventoryEdit.records[0].status, 'in_stock');
 
 const attendance: TrackCollection = {
   ...collection,
@@ -139,12 +180,36 @@ assert.equal(completedMaintenance.records[0].status, 'completed');
 assert.equal(completedMaintenance.records[0].inspections?.[0].result, 'completed');
 assert.equal(completedMaintenance.records[0].inspections?.[0].performedBy, 'Amina');
 assert.ok((completedMaintenance.records[0].dueAt ?? 0) > Date.now());
+const editedMaintenance = updateTrackRecordDetails(completedMaintenance, 'pump', {
+  ...completedMaintenance.records[0],
+  notes: 'Updated notes',
+});
+assert.deepEqual(editedMaintenance.records[0].inspections, completedMaintenance.records[0].inspections);
+const oneOffMaintenance = { ...maintenance, records: [{ ...maintenance.records[0], intervalDays: undefined }] };
+assert.equal(applyTrackAction(oneOffMaintenance, 'pump', 'complete').collection.records[0].dueAt, undefined);
+const oneOffInspection = { ...oneOffMaintenance, template: 'inspection' as const };
+assert.equal(applyTrackAction(oneOffInspection, 'pump', 'pass').collection.records[0].dueAt, undefined);
+assert.equal(applyTrackAction(oneOffInspection, 'pump', 'fail').collection.records[0].dueAt, maintenance.records[0].dueAt);
+assert.equal(maxTrackActivityEvents, 500);
+assert.equal(maxTrackInspectionsPerRecord, 100);
+const retentionActivity = Array.from({ length: maxTrackActivityEvents }, (_, index) => ({ id: `event-${index}`, recordId: 'drill', recordName: 'Cordless drill', action: 'Existing', detail: '', createdAt: index + 1 }));
+const activityCapped = applyTrackAction({ ...collection, activity: retentionActivity }, 'drill', 'checkout').collection;
+assert.equal(activityCapped.activity.length, maxTrackActivityEvents);
+assert.equal(activityCapped.activity[0].action, 'Checked out');
+const retentionInspections = Array.from({ length: maxTrackInspectionsPerRecord }, (_, index) => ({ id: `inspection-${index}`, result: 'completed' as const, notes: '', performedBy: 'Tester', createdAt: index + 1 }));
+const inspectionCapped = applyTrackAction({ ...maintenance, records: [{ ...maintenance.records[0], inspections: retentionInspections }] }, 'pump', 'complete').collection;
+assert.equal(inspectionCapped.records[0].inspections?.length, maxTrackInspectionsPerRecord);
+assert.equal(inspectionCapped.records[0].inspections?.[0].notes, '');
 
 withFailingLocalStorage(() => assert.throws(() => writeTrackCollections([collection]), TrackStorageError));
 assert.throws(() => writeTrackCollections(Array.from({ length: maxTrackWorkspaces + 1 }, (_, index) => ({ ...collection, id: String(index) }))), TrackStorageError);
 const oversizedEvidence = structuredClone(maintenance);
 oversizedEvidence.records[0].inspections = [{ id: 'large', result: 'completed', notes: '', performedBy: 'Tester', createdAt: 1, photoDataUrl: `data:image/jpeg;base64,${'A'.repeat(3 * 1024 * 1024)}` }];
 assert.throws(() => writeTrackCollections([oversizedEvidence]), TrackStorageError);
+const evidenceOverReadLimit = structuredClone(maintenance);
+evidenceOverReadLimit.records[0].inspections = [{ id: 'read-limit', result: 'completed', notes: '', performedBy: 'Tester', createdAt: 1, photoDataUrl: `data:image/jpeg;base64,${'A'.repeat(maxTrackEvidencePhotoCharacters)}` }];
+assert.equal(isTrackEvidencePhotoDataUrl(evidenceOverReadLimit.records[0].inspections[0].photoDataUrl), false);
+assert.throws(() => writeTrackCollections([evidenceOverReadLimit]), { name: 'TrackStorageError', message: /evidence photo is too large or invalid/ });
 
 const business: BusinessState = {
   members: [],
@@ -152,6 +217,9 @@ const business: BusinessState = {
   campaigns: [{ id: 'menu', name: 'Menu', destination: 'https://example.com/menu', slug: 'menu', color: '#173f35', active: true, scans: [], createdAt: 1 }],
   integrations: { webhookUrl: '', syncEndpoint: '', customDomain: '' },
 };
+assert.equal(campaignDraftMatchesSaved(business.campaigns[0], { name: 'Menu', destination: 'example.com/menu', slug: 'menu', color: '#173f35' }), true);
+assert.equal(campaignDraftMatchesSaved(business.campaigns[0], { name: 'Menu', destination: 'example.com/menu', slug: 'unsaved-menu', color: '#173f35' }), false);
+assert.equal(campaignDraftMatchesSaved(undefined, { name: 'Menu', destination: 'example.com/menu', slug: 'menu', color: '#173f35' }), false);
 assert.equal(parseCampaignPayload(campaignPayload('menu')), 'menu');
 assert.equal(parseCampaignPayload('https://app.qry.local/go/menu'), 'menu');
 assert.equal(recordCampaignScan(business, 'menu', 'camera').campaigns[0].scans.length, 1);
@@ -175,6 +243,7 @@ withFailingLocalStorage(() => {
   assert.throws(() => writeBusinessState(business), BusinessStorageError);
 });
 assert.throws(() => writeHistory([{ ...savedItem, payload: 'A'.repeat(600 * 1024) }]), LocalStorageWriteError);
+assert.throws(() => writeHistory([{ ...savedItem, payload: 'A'.repeat(maxHistoryPayloadCharacters + 1) }]), LocalStorageWriteError);
 assert.throws(() => writeHistory(Array.from({ length: maxHistoryItems + 1 }, (_, index) => ({ ...savedItem, id: String(index) }))), LocalStorageWriteError);
 assert.throws(() => writeBusinessState({ ...business, integrations: { ...business.integrations, customDomain: 'A'.repeat(600 * 1024) } }), BusinessStorageError);
 assert.throws(() => writeBusinessState({ ...business, members: Array.from({ length: maxBusinessMembers + 1 }, (_, index) => ({ id: String(index), name: `Member ${index}`, email: '', role: 'viewer', active: true, createdAt: 1 })) }), BusinessStorageError);
@@ -212,6 +281,10 @@ const replacementPreview = buildImportPreview(collection, duplicateCsv, { code: 
 assert.equal(replacementPreview.records.length, 1);
 assert.equal(replacementPreview.records[0].name, 'Last');
 assert.equal(applyImportedRecords(collection, replacementPreview).records.filter((record) => record.id === 'drill').length, 1);
+const inventoryCollection: TrackCollection = { ...collection, template: 'inventory', records: [{ ...collection.records[0], code: 'INV-001', status: 'in_stock', quantity: 4 }] };
+const inventoryReplacement = buildImportPreview(inventoryCollection, parseCsv('Code,Name,Quantity\r\nINV-001,Drill,0'), { code: 0, name: 1, quantity: 2 }, 'replace');
+assert.equal(inventoryReplacement.records[0].quantity, 0);
+assert.equal(inventoryReplacement.records[0].status, 'out_of_stock');
 const fullCollection = { ...collection, records: Array.from({ length: 1000 }, (_, index) => ({ ...collection.records[0], id: `record-${index}`, code: `AST-${index}` })) };
 const fullReplacement = buildImportPreview(fullCollection, parseCsv('Code,Name\r\nAST-0,Updated\r\nNEW-1,New'), { code: 0, name: 1 }, 'replace');
 const acceptedAtCapacity = limitImportedRecords(fullCollection, fullReplacement.records, 1000);

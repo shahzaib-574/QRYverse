@@ -5,6 +5,7 @@ import { exportQrImage, exportTextFile } from '../lib/share';
 import { normaliseHttpUrl } from '../lib/qr';
 import type { HostedCampaign } from '../cloud/client';
 import { businessBackupJson, campaignPayload, campaignScanCount, makeBusinessId, parseBusinessBackup, recordCampaignScan, type BusinessState, type BusinessStateChange, type DynamicCampaign } from './store';
+import { campaignDraftMatchesSaved } from './campaign-integrity';
 
 export type HostedCampaignBridge = {
   publicBaseUrl: string;
@@ -95,7 +96,13 @@ function CampaignSheet({ initial, hostedBaseUrl, onClose, onCreate, onNotice }: 
   const [generatedQr, setGeneratedQr] = useState<{ payload: string; color: string; url: string }>();
   const id = useMemo(() => initial?.id ?? makeBusinessId(), [initial?.id]);
   const resolvedSlug = slug.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const payload = hostedBaseUrl && resolvedSlug ? `${hostedBaseUrl.replace(/\/+$/, '')}/r/${resolvedSlug}` : campaignPayload(id);
+  const safeDestination = normaliseHttpUrl(destination);
+  const destinationError = destination.trim() && !safeDestination ? 'Enter a valid website address.' : '';
+  const valid = Boolean(name.trim() && safeDestination);
+  const matchesSavedCampaign = campaignDraftMatchesSaved(initial, { name, destination, slug: resolvedSlug, color });
+  const savedPayload = initial?.hosted?.publicUrl ?? (initial ? campaignPayload(initial.id) : '');
+  const pendingPayload = hostedBaseUrl && resolvedSlug ? `${hostedBaseUrl.replace(/\/+$/, '')}/r/${resolvedSlug}` : campaignPayload(id);
+  const payload = matchesSavedCampaign && savedPayload ? savedPayload : pendingPayload;
   const qr = generatedQr?.payload === payload && generatedQr.color === color ? generatedQr.url : '';
   useEffect(() => {
     let active = true;
@@ -104,9 +111,12 @@ function CampaignSheet({ initial, hostedBaseUrl, onClose, onCreate, onNotice }: 
       .catch(() => { if (active) setGeneratedQr(undefined); });
     return () => { active = false; };
   }, [payload, color]);
-  const safeDestination = normaliseHttpUrl(destination);
-  const destinationError = destination.trim() && !safeDestination ? 'Enter a valid website address.' : '';
-  const valid = Boolean(name.trim() && safeDestination);
+  const exportReady = Boolean(matchesSavedCampaign && savedPayload === payload && qr);
+  const exportHelp = !initial
+    ? 'Create this campaign before exporting its permanent QR.'
+    : !matchesSavedCampaign
+      ? 'Save these changes before exporting the updated QR.'
+      : 'Exports the QR for the saved campaign shown here.';
   const create = () => onCreate({ id, name: name.trim(), destination: safeDestination, slug: resolvedSlug, color, active: initial?.active ?? true, scans: initial?.scans ?? [], localTotalScans: initial?.localTotalScans ?? initial?.scans.length ?? 0, createdAt: initial?.createdAt ?? Date.now(), hosted: initial?.hosted });
   return (
     <div className="modal-layer" role="dialog" aria-modal="true" aria-label={initial ? 'Edit dynamic campaign' : 'Create dynamic campaign'}>
@@ -127,7 +137,8 @@ function CampaignSheet({ initial, hostedBaseUrl, onClose, onCreate, onNotice }: 
           <span>
             <strong>{payload}</strong>
             <small>{hostedBaseUrl ? 'Hosted redirect · Aggregate analytics' : 'App-routed dynamic code · Local analytics'}</small>
-            <button disabled={!qr} onClick={async () => { if (!qr) return; try { await exportQrImage(qr); onNotice('Campaign QR ready to share'); } catch { onNotice('Campaign QR could not be exported'); } }}><Download /> Export QR</button>
+            <button type="button" disabled={!exportReady} aria-describedby="campaign-export-help" onClick={async () => { if (!exportReady) return; try { await exportQrImage(qr); onNotice('Campaign QR ready to share'); } catch { onNotice('Campaign QR could not be exported'); } }}><Download /> Export QR</button>
+            <small id="campaign-export-help" aria-live="polite">{exportHelp}</small>
           </span>
         </div>
         <div className="campaign-palette">

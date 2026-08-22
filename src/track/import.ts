@@ -1,4 +1,12 @@
-import { makeTrackId, maxTrackRecordsPerWorkspace, nextRecordCode, type TrackCollection, type TrackRecord } from './store';
+import {
+  makeTrackId,
+  maxTrackActivityEvents,
+  maxTrackInspectionsPerRecord,
+  maxTrackRecordsPerWorkspace,
+  nextRecordCode,
+  type TrackCollection,
+  type TrackRecord,
+} from './store';
 import { initialStatus } from '../business/store';
 
 export type ImportField = 'name' | 'code' | 'location' | 'quantity' | 'notes';
@@ -91,6 +99,9 @@ export function buildImportPreview(
       ...existing,
       code: suppliedCode || existing.code,
       name,
+      status: mapping.quantity === undefined || collection.template !== 'inventory'
+        ? existing.status
+        : initialStatus(collection.template, quantity),
       quantity: mapping.quantity === undefined ? existing.quantity : quantity,
       location: mapping.location === undefined ? existing.location : valueAt(row, mapping.location).trim(),
       notes: mapping.notes === undefined ? existing.notes : valueAt(row, mapping.notes).trim(),
@@ -168,7 +179,7 @@ export function mergeBackup(local: TrackCollection[], incoming: TrackCollection[
       name: imported.name,
       template: imported.template,
       records: [...records.values()],
-      activity: [...activity.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 500),
+      activity: [...activity.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, maxTrackActivityEvents),
     });
   }
   return [...merged.values()];
@@ -191,7 +202,7 @@ function sanitizeCollection(value: unknown, index: number, _warnings: string[]):
   assertUnique(records.map((record) => record.id), `${name} record IDs`);
   assertUnique(records.map((record) => record.code.toLowerCase()), `${name} record codes`);
   const activitySource = Array.isArray(raw.activity) ? raw.activity : [];
-  const activity = activitySource.slice(0, 500).flatMap((event) => {
+  const activity = activitySource.slice(0, maxTrackActivityEvents).flatMap((event) => {
     if (!event || typeof event !== 'object') return [];
     const item = event as Record<string, unknown>;
     return [{
@@ -221,7 +232,7 @@ function sanitizeRecord(value: unknown, index: number): TrackRecord {
     checklist: Array.isArray(raw.checklist) ? raw.checklist.slice(0, 50).map((item) => cleanText(item, 200)).filter(Boolean) : undefined,
     contact: cleanText(raw.contact, 160) || undefined,
     reference: cleanText(raw.reference, 160) || undefined,
-    inspections: Array.isArray(raw.inspections) ? raw.inspections.slice(0, 100).flatMap((inspection) => {
+    inspections: Array.isArray(raw.inspections) ? raw.inspections.slice(0, maxTrackInspectionsPerRecord).flatMap((inspection) => {
       if (!inspection || typeof inspection !== 'object') return [];
       const item = inspection as Record<string, unknown>;
       const result = String(item.result);

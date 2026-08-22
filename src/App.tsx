@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import {
   ArrowRight,
   BarChart3,
@@ -57,6 +58,7 @@ import {
 } from './lib/ads';
 import {
   makeId,
+  maxHistoryPayloadCharacters,
   readHistory,
   readPreferences,
   LocalStorageWriteError,
@@ -81,10 +83,21 @@ type Tab = 'home' | 'create' | 'library' | 'track' | 'studio';
 type ToastValue = string | { message: string; actionLabel: string; onAction: () => void };
 
 const demoPayload = 'https://example.com/qry-welcome';
+const browserHistoryEnabled = !Capacitor.isNativePlatform();
+
+function isTab(value: unknown): value is Tab {
+  return value === 'home' || value === 'create' || value === 'library' || value === 'track' || value === 'studio';
+}
+
+function initialTab(): Tab {
+  if (!browserHistoryEnabled) return 'home';
+  const value = (window.history.state as { qryverseTab?: unknown } | null)?.qryverseTab;
+  return isTab(value) ? value : 'home';
+}
 
 export default function App() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<Tab>('home');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [createMode, setCreateMode] = useState<CreateMode>('link');
   const [history, setHistory] = useState<SavedItem[]>(readHistory);
   const [preferences, setPreferences] = useState<Preferences>(readPreferences);
@@ -102,6 +115,8 @@ export default function App() {
   const routeRef = useRef<(payload: string, source?: 'camera' | 'app_link') => Promise<void>>(async () => undefined);
   const cloudClientRef = useRef<CloudClient | undefined>(undefined);
   const tabHistoryRef = useRef<Tab[]>([]);
+  const tabRef = useRef(tab);
+  const scannerBusyRef = useRef(false);
   const historyRef = useRef(history);
   const businessRef = useRef(business);
   const collectionsRef = useRef(collections);
@@ -189,13 +204,32 @@ export default function App() {
 
   useEffect(() => () => { void shutdownMobileAds(); }, []);
 
+  useEffect(() => {
+    if (!browserHistoryEnabled) return;
+    const state = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+    window.history.replaceState({ ...state, qryverseTab: tabRef.current }, '', window.location.href);
+    const onPopState = (event: PopStateEvent) => {
+      const value = (event.state as { qryverseTab?: unknown } | null)?.qryverseTab;
+      const next = isTab(value) ? value : 'home';
+      tabRef.current = next;
+      setTab(next);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   const navigateTo = (next: Tab) => {
-    setTab((current) => {
-      if (current === next) return current;
+    const current = tabRef.current;
+    if (current === next) return;
+    if (browserHistoryEnabled) {
+      const state = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+      window.history.pushState({ ...state, qryverseTab: next }, '', window.location.href);
+    } else {
       tabHistoryRef.current.push(current);
       if (tabHistoryRef.current.length > 12) tabHistoryRef.current.shift();
-      return next;
-    });
+    }
+    tabRef.current = next;
+    setTab(next);
   };
 
   const restoreCurrentPageFocus = () => {
@@ -230,13 +264,14 @@ export default function App() {
         nestedBack.click();
         return;
       }
-      setTab((current) => {
-        if (current === 'home') {
-          void CapacitorApp.exitApp();
-          return current;
-        }
-        return tabHistoryRef.current.pop() ?? 'home';
-      });
+      const current = tabRef.current;
+      if (current === 'home') {
+        void CapacitorApp.exitApp();
+        return;
+      }
+      const next = tabHistoryRef.current.pop() ?? 'home';
+      tabRef.current = next;
+      setTab(next);
     }).then((handle) => { removeListener = () => handle.remove(); }).catch(() => undefined);
     return () => { void removeListener?.(); };
   }, []);
@@ -310,6 +345,8 @@ export default function App() {
   };
 
   const beginScan = async () => {
+    if (scannerBusyRef.current) return;
+    scannerBusyRef.current = true;
     setScannerBusy(true);
     try {
       await setMobileBannerVisible(false).catch(() => undefined);
@@ -323,11 +360,14 @@ export default function App() {
         setToast({ message: outcome.message, actionLabel: 'Open settings', onAction: () => { void openScannerSettings().catch(() => setToast('Android settings could not be opened')); } });
       }
     } finally {
+      scannerBusyRef.current = false;
       setScannerBusy(false);
     }
   };
 
   const scanGallery = async () => {
+    if (scannerBusyRef.current) return;
+    scannerBusyRef.current = true;
     setScannerBusy(true);
     try {
       await setMobileBannerVisible(false).catch(() => undefined);
@@ -335,6 +375,7 @@ export default function App() {
       if (outcome.status === 'success') await handleDetected(outcome.values);
       if (outcome.status === 'unavailable') setToast(outcome.message);
     } finally {
+      scannerBusyRef.current = false;
       setScannerBusy(false);
     }
   };
@@ -487,6 +528,7 @@ export default function App() {
         {tab === 'home' && (
           <Home
             history={history}
+            scannerBusy={scannerBusy}
             onScan={beginScan}
             onPaste={() => { void openPaste(); }}
             onGallery={scanGallery}
@@ -557,13 +599,14 @@ export default function App() {
       <nav className="bottom-nav" aria-label="Main navigation">
         <NavButton active={tab === 'home'} label={t('Home')} icon={<HomeIcon />} onClick={() => navigateTo('home')} />
         <NavButton active={tab === 'create'} label={t('Create')} icon={<Plus />} onClick={() => navigateTo('create')} />
-        <button className="scan-fab" onClick={beginScan} aria-label="Scan QR code">
+        <button className="scan-fab" disabled={scannerBusy} aria-busy={scannerBusy || undefined} onClick={beginScan} aria-label={scannerBusy ? 'QR scanner is working' : 'Scan QR code'}>
           <ScanLine />
           <span>Scan</span>
         </button>
         <NavButton active={tab === 'library'} label={t('Library')} icon={<LayoutGrid />} onClick={() => navigateTo('library')} />
         <NavButton active={tab === 'track'} label={t('Track')} icon={<ClipboardCheck />} onClick={() => navigateTo('track')} />
       </nav>
+      {scannerBusy && <span className="sr-only" role="status" aria-live="polite">QR scanner is working.</span>}
 
       {scanSheet && (
         <PasteSheet
@@ -612,8 +655,9 @@ export default function App() {
   );
 }
 
-function Home({ history, onScan, onPaste, onGallery, onOpen, onCreate, onLibrary, onTrack }: {
+function Home({ history, scannerBusy, onScan, onPaste, onGallery, onOpen, onCreate, onLibrary, onTrack }: {
   history: SavedItem[];
+  scannerBusy: boolean;
   onScan: () => void;
   onPaste: () => void;
   onGallery: () => void;
@@ -630,13 +674,13 @@ function Home({ history, onScan, onPaste, onGallery, onOpen, onCreate, onLibrary
         <div className="eyebrow"><ShieldCheck size={15} /> {t('Private by design')}</div>
         <h1>{t('Point. Scan.')}<br /><em>{t('Know first.')}</em></h1>
         <p>{t('See where a code leads before you follow it. Your scans stay on this device.')}</p>
-        <button className="primary-cta" onClick={onScan}>
+        <button className="primary-cta" disabled={scannerBusy} aria-busy={scannerBusy || undefined} onClick={onScan}>
           <span className="cta-icon"><ScanLine /></span>
           <span><strong>{t('Scan a QR code')}</strong><small>{t('Camera opens only when you ask')}</small></span>
           <ArrowRight />
         </button>
         <div className="hero-utility-row">
-          <button className="text-action" onClick={onGallery}><ImageIcon size={15} /> {t('Scan from photo')}</button>
+          <button className="text-action" disabled={scannerBusy} onClick={onGallery}><ImageIcon size={15} /> {t('Scan from photo')}</button>
           <button className="text-action" onClick={onPaste}><Copy size={15} /> {t('Paste a value')}</button>
         </div>
         <div className="hero-decoration" aria-hidden="true"><QrCode /></div>
@@ -683,23 +727,37 @@ function Create({ initialMode, onModeChange, onSaved, onNotice }: { initialMode:
   const [fields, setFields] = useState<Record<string, string>>({ security: 'WPA', hidden: 'false' });
   const [color, setColor] = useState('#173f35');
   const [generatedQr, setGeneratedQr] = useState<{ payload: string; color: string; url: string }>();
+  const [generationError, setGenerationError] = useState('');
   const payload = useMemo(() => createPayload(mode, fields), [mode, fields]);
+  const payloadBytes = useMemo(() => new TextEncoder().encode(payload).byteLength, [payload]);
   const dataUrl = generatedQr?.payload === payload && generatedQr.color === color ? generatedQr.url : '';
 
   useEffect(() => {
     if (!payload) {
       setGeneratedQr(undefined);
+      setGenerationError('');
+      return;
+    }
+    if (payloadBytes > 1_200) {
+      setGeneratedQr(undefined);
+      setGenerationError('This content is too large for a reliable high-quality QR code. Shorten it to 1,200 UTF-8 bytes or less.');
       return;
     }
     let active = true;
+    setGenerationError('');
     QRCode.toDataURL(payload, {
       width: 720,
       margin: 3,
       errorCorrectionLevel: 'H',
       color: { dark: color, light: '#fffdf7' },
-    }).then((url) => { if (active) setGeneratedQr({ payload, color, url }); }).catch(() => { if (active) setGeneratedQr(undefined); });
+    }).then((url) => { if (active) setGeneratedQr({ payload, color, url }); }).catch(() => {
+      if (active) {
+        setGeneratedQr(undefined);
+        setGenerationError('This content could not be encoded as a QR code. Shorten it and try again.');
+      }
+    });
     return () => { active = false; };
-  }, [payload, color]);
+  }, [payload, payloadBytes, color]);
 
   const update = (name: string, value: string) => setFields((current) => ({ ...current, [name]: value }));
 
@@ -755,6 +813,7 @@ function Create({ initialMode, onModeChange, onSaved, onNotice }: { initialMode:
         }}><Download /> {t('Export')}</button>
         <button className="solid-button" disabled={!dataUrl} onClick={() => onSaved(payload)}><Bookmark /> {t('Save code')}</button>
       </div>
+      {generationError && <p className="creator-validation" role="alert">{generationError}</p>}
       {!payload && <p className="creator-validation" id="creator-validation" role="status">{mode === 'wifi' ? 'Enter a network name to generate this code.' : mode === 'contact' ? 'Enter at least one contact detail to generate this code.' : mode === 'link' && fields.url ? 'Enter a valid HTTP or HTTPS website address.' : 'Enter content to generate this code.'}</p>}
       <p className="privacy-note"><LockKeyhole size={14} /> {t('Static codes are generated entirely on your device.')}</p>
     </div>
@@ -792,8 +851,8 @@ function Library({ items, onOpen, onFavourite, onDelete }: {
               <KindIcon kind={item.kind} />
               <span><strong>{item.title}</strong><small>{labelForKind(item.kind)} · {relativeDate(item.createdAt)}</small></span>
             </button>
-            <button className={`icon-button ${item.favourite ? 'active' : ''}`} onClick={() => onFavourite(item.id)} aria-label="Favourite" aria-pressed={item.favourite}><Star fill={item.favourite ? 'currentColor' : 'none'} /></button>
-            <button className="icon-button danger" onClick={() => onDelete(item.id)} aria-label="Delete item"><Trash2 /></button>
+            <button className={`icon-button ${item.favourite ? 'active' : ''}`} onClick={() => onFavourite(item.id)} aria-label={`${item.favourite ? 'Remove' : 'Add'} ${item.title} ${item.favourite ? 'from' : 'to'} favourites`} aria-pressed={item.favourite}><Star fill={item.favourite ? 'currentColor' : 'none'} /></button>
+            <button className="icon-button danger" onClick={() => onDelete(item.id)} aria-label={`Delete ${item.title}`}><Trash2 /></button>
           </div>
         ))}</div>
       )}
@@ -852,7 +911,7 @@ function Studio({ preferences, onPreferences, onNotice, business, onBusiness, on
       <div className="settings-card ads-privacy-card">
         <div className="settings-title"><ShieldCheck /><span><strong>Ads & privacy</strong><small>{ads.native ? (ads.usingTestAds ? 'Android test ads · no live revenue' : 'Android production ads') : 'Browser preview stays ad-free'}</small></span></div>
         <p>{ads.message ?? 'The Android release may show one reserved banner on Home and Library. Ads never cover scanning, results, editing, account, consent, or deletion surfaces.'}</p>
-        {ads.native && ads.privacyOptionsRequired && <button className="secondary-button privacy-options-button" onClick={() => void onPrivacyOptions()}><ShieldCheck /> Privacy choices</button>}
+        {ads.native && ads.privacyOptionsRequired && <button className="secondary-button privacy-options-button" onClick={() => void onPrivacyOptions()}><ShieldCheck /> Privacy and cookie settings</button>}
         <nav className="legal-links" aria-label="Legal and privacy links">
           <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
           <a href="/terms.html" target="_blank" rel="noreferrer">Terms</a>
@@ -956,7 +1015,11 @@ function PasteSheet({ onClose, onSubmit }: { onClose: () => void; onSubmit: (val
         <span className="sheet-kicker">Browser preview</span>
         <h2>Paste a QR value</h2>
         <p>Use a URL, Wi-Fi payload, contact card, or any text.</p>
-        <textarea autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder="https://example.com" />
+        <label className="paste-value-field">
+          <span>QR value to inspect</span>
+          <textarea autoFocus value={value} maxLength={maxHistoryPayloadCharacters} aria-describedby="paste-value-limit" onChange={(e) => setValue(e.target.value)} placeholder="https://example.com" />
+        </label>
+        <small id="paste-value-limit">Up to 65,536 characters.</small>
         <button className="solid-button full" disabled={!value.trim()} onClick={() => onSubmit(value.trim())}>Inspect value <Eye /></button>
       </section>
     </div>

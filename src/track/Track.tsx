@@ -17,10 +17,12 @@ import {
   Gauge,
   MapPin,
   PackageCheck,
+  Pencil,
   Plus,
   QrCode,
   RotateCcw,
   Search,
+  Save,
   ShieldCheck,
   TriangleAlert,
   Tags,
@@ -34,17 +36,24 @@ import { exportTextFile } from '../lib/share';
 import { useI18n } from '../i18n/LocaleProvider';
 import {
   applyTrackAction,
+  collectionActivityCsv,
   collectionCsv,
   makeTrackId,
+  isTrackEvidencePhotoDataUrl,
+  maxTrackEvidencePhotoCharacters,
+  maxTrackActivityEvents,
+  maxTrackInspectionsPerRecord,
   maxTrackRecordsPerWorkspace,
   maxTrackWorkspaces,
   nextRecordCode,
   templateInfo,
   trackPayload,
+  updateTrackRecordDetails,
   type TrackAction,
   type TrackCollection,
   type TrackCollectionsChange,
   type TrackRecord,
+  type TrackRecordDetails,
   type TrackTemplate,
 } from './store';
 import './track.css';
@@ -107,7 +116,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
         ? [...document.querySelectorAll<HTMLButtonElement>('.workspace-list [data-workspace-id]')]
           .find((button) => button.dataset.workspaceId === previousId)
         : undefined;
-      const fallbackHeading = document.querySelector<HTMLElement>('.track-screen .track-intro h1');
+      const fallbackHeading = document.querySelector<HTMLElement>('.track-screen .track-title h1');
       const targetElement = previousWorkspace ?? fallbackHeading;
       if (!targetElement) return;
       if (targetElement === fallbackHeading) targetElement.tabIndex = -1;
@@ -224,6 +233,11 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
               if (duplicate) onNotice('Duplicate scan: this attendance state is already recorded');
               else if (saved) onNotice('Record updated');
             }}
+            onEdit={(details) => {
+              const saved = updateCollection(collection.id, (current) => updateTrackRecordDetails(current, record.id, details));
+              if (saved) onNotice('Record details saved');
+              return saved;
+            }}
           />
         );
       })()}
@@ -287,13 +301,15 @@ function CollectionDetail({ collection, onBack, onAdd, onOpenRecord, onNotice, o
   const filtered = collection.records.filter((record) => `${record.name} ${record.code} ${record.location}`.toLowerCase().includes(query.toLowerCase()));
   const active = collection.records.filter((record) => !recordNeedsAttention(collection.template, record)).length;
   const issue = collection.records.length - active;
-  const exportFile = async (format: 'csv' | 'json') => {
+  const exportFile = async (format: 'csv' | 'json' | 'activity') => {
     try {
       const safeName = collection.name.replace(/[^a-z\d-_]+/gi, '-').toLowerCase();
-      const content = format === 'csv' ? collectionCsv(collection) : JSON.stringify(collection, null, 2);
-      await exportTextFile(`${safeName}.${format}`, content, format === 'csv' ? 'text/csv' : 'application/json');
-      onNotice(`${format.toUpperCase()} export ready`);
-    } catch { onNotice(`${format.toUpperCase()} export could not be completed`); }
+      const activity = format === 'activity';
+      const content = activity ? collectionActivityCsv(collection) : format === 'csv' ? collectionCsv(collection) : JSON.stringify(collection, null, 2);
+      const filename = activity ? `${safeName}-activity.csv` : `${safeName}.${format}`;
+      await exportTextFile(filename, content, format === 'json' ? 'application/json' : 'text/csv');
+      onNotice(`${activity ? 'Activity CSV' : format.toUpperCase()} export ready`);
+    } catch { onNotice(`${format === 'activity' ? 'Activity CSV' : format.toUpperCase()} export could not be completed`); }
   };
 
   return (
@@ -309,6 +325,7 @@ function CollectionDetail({ collection, onBack, onAdd, onOpenRecord, onNotice, o
         <button onClick={onImport}><FileSpreadsheet /> {t('Import')}</button>
         <button onClick={onLabels} disabled={!collection.records.length}><Tags /> {t('Labels')}</button>
         <button onClick={() => exportFile('csv')}><Download /> CSV</button>
+        <button onClick={() => exportFile('activity')} disabled={!collection.activity.length}><Clock3 /> Activity CSV</button>
         <button onClick={() => exportFile('json')}><FileJson /> {t('Backup')}</button>
       </div>
       <div className="track-heading records-heading"><div><span>RECORDS</span><h2>{t('Items')}</h2></div><button disabled={collection.records.length >= recordLimit} onClick={onAdd}><Plus /> {t('Add')}</button></div>
@@ -327,8 +344,9 @@ function CollectionDetail({ collection, onBack, onAdd, onOpenRecord, onNotice, o
       )}
       {collection.records.length >= recordLimit && <p className="record-limit-note"><TriangleAlert /> Workspace record limit reached. Export remains available.</p>}
       {collection.activity.length > 0 && <>
-        <div className="track-heading activity-heading"><div><span>ACTIVITY</span><h2>{t('Latest updates')}</h2></div></div>
+        <div className="track-heading activity-heading"><div><span>ACTIVITY</span><h2>{t('Latest updates')}</h2></div><small>{collection.activity.length}/{maxTrackActivityEvents} retained</small></div>
         <div className="activity-list">{collection.activity.slice(0, 5).map((activity) => <div key={activity.id}><Clock3 /><span><strong>{activity.action} · {activity.recordName}</strong><small>{activity.detail} · {relativeTime(activity.createdAt)}</small></span></div>)}</div>
+        {collection.activity.length > 5 && <details className="activity-history-more"><summary>Show {collection.activity.length - 5} older retained events</summary><div className="activity-list">{collection.activity.slice(5).map((activity) => <div key={activity.id}><Clock3 /><span><strong>{activity.action} · {activity.recordName}</strong><small>{activity.detail} · {new Date(activity.createdAt).toLocaleString()}</small></span></div>)}</div></details>}
       </>}
     </>
   );
@@ -411,10 +429,26 @@ function boundedWholeNumber(value: string, maximum: number): number | undefined 
   return Number.isFinite(number) && Number.isInteger(number) && number >= 0 && number <= maximum ? number : undefined;
 }
 
-function RecordActionSheet({ collection, record, onClose, onDelete, onAction }: { collection: TrackCollection; record: TrackRecord; onClose: () => void; onDelete: () => void; onAction: (action: TrackAction, evidence?: { notes?: string; performedBy?: string; photoDataUrl?: string }) => void }) {
+function dateInputValue(timestamp: number): string {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function RecordActionSheet({ collection, record, onClose, onDelete, onAction, onEdit }: {
+  collection: TrackCollection;
+  record: TrackRecord;
+  onClose: () => void;
+  onDelete: () => void;
+  onAction: (action: TrackAction, evidence?: { notes?: string; performedBy?: string; photoDataUrl?: string }) => void;
+  onEdit: (details: TrackRecordDetails) => boolean;
+}) {
   const { t } = useI18n();
   const [qrImage, setQrImage] = useState('');
   const payload = useMemo(() => trackPayload(collection.id, record.id), [collection.id, record.id]);
+  const [editing, setEditing] = useState(false);
   const [evidence, setEvidence] = useState('');
   const [performedBy, setPerformedBy] = useState(record.assignee ?? '');
   const [photoDataUrl, setPhotoDataUrl] = useState('');
@@ -434,16 +468,78 @@ function RecordActionSheet({ collection, record, onClose, onDelete, onAction }: 
   const evidenceActions = actions.some((action) => ['pass', 'fail', 'complete'].includes(action.id));
   return (
     <Sheet label="Record actions" onClose={onClose} className="record-action-sheet">
-      <div className="record-sheet-head"><TemplateIcon template={collection.template} /><span><small>{record.code}</small><h2>{record.name}</h2></span></div>
-      <div className="record-meta"><span><small>{t('Status')}</small><strong>{humanStatus(record.status)}</strong></span>{collection.template === 'inventory' && <span><small>{t('Quantity')}</small><strong>{record.quantity}</strong></span>}{record.location && <span><small>{t('Location')}</small><strong><MapPin /> {record.location}</strong></span>}{record.dueAt && <span><small>Due</small><strong>{new Date(record.dueAt).toLocaleDateString()}</strong></span>}</div>
-      {record.checklist?.length ? <div className="record-checklist"><span>CHECKLIST</span>{record.checklist.map((item) => <label key={item}><Check /> {item}</label>)}</div> : null}
-      {evidenceActions && <><div className="inspection-evidence"><label><span>Performed by</span><input value={performedBy} onChange={(event) => setPerformedBy(event.target.value)} placeholder="Name or team" /></label><label><span>Evidence notes</span><textarea value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Condition, readings, issues, or proof notes" /></label></div><label className={`evidence-photo ${photoError ? 'invalid' : ''}`}><span>{photoDataUrl ? <img src={photoDataUrl} alt="Evidence preview" /> : <QrCode />}</span><strong>{photoDataUrl ? 'Evidence photo ready' : 'Add evidence photo'}</strong><small>Camera or image · compressed on device</small><input type="file" accept="image/*" capture="environment" aria-invalid={Boolean(photoError)} aria-describedby={photoError ? 'evidence-photo-error' : undefined} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(''); try { setPhotoDataUrl(await resizeEvidencePhoto(file)); } catch (error) { setPhotoError(error instanceof Error ? error.message : 'Photo could not be read.'); } }} /></label>{photoError && <p className="deployment-error evidence-photo-error" id="evidence-photo-error" role="alert">{photoError}</p>}{photoDataUrl && <button type="button" className="secondary-button remove-evidence-photo" onClick={() => { setPhotoDataUrl(''); setPhotoError(''); }}>Remove pending photo</button>}</>}
-      <div className="quick-actions"><span>QUICK ACTION</span><div>{actions.map((action) => <button key={action.id} onClick={() => onAction(action.id, { notes: evidence, performedBy, photoDataUrl: photoDataUrl || undefined })}>{action.icon}<strong>{action.label}</strong></button>)}</div></div>
-      {record.inspections?.length ? <details className="inspection-history"><summary>Inspection and completion history ({record.inspections.length})</summary>{record.inspections.slice(0, 8).map((item) => <div key={item.id}>{item.photoDataUrl ? <img src={item.photoDataUrl} alt="Inspection evidence" /> : <StatusDot status={item.result} />}<span><strong>{humanStatus(item.result)} · {item.performedBy}</strong><small>{item.notes || 'No evidence note'} · {relativeTime(item.createdAt)}</small></span></div>)}</details> : null}
-      <details className="label-preview"><summary><QrCode /> {t('View printable label')}</summary><div>{qrImage && <img src={qrImage} alt={`QR code for ${record.name}`} />}<strong>{record.name}</strong><small>{record.code} · Scan with QRY</small></div></details>
-      <button type="button" className="danger-button record-delete" onClick={onDelete}><Trash2 /> Delete record and evidence</button>
+      <div className="record-sheet-head"><TemplateIcon template={collection.template} /><span><small>{record.code}</small><h2>{record.name}</h2></span><button type="button" className="record-edit-button" onClick={() => setEditing((value) => !value)}>{editing ? <X /> : <Pencil />}{editing ? 'Cancel' : 'Edit details'}</button></div>
+      {editing ? (
+        <RecordEditForm collection={collection} record={record} onCancel={() => setEditing(false)} onSave={(details) => { if (!onEdit(details)) return; setEditing(false); }} />
+      ) : <>
+        <div className="record-meta"><span><small>{t('Status')}</small><strong>{humanStatus(record.status)}</strong></span>{collection.template === 'inventory' && <span><small>{t('Quantity')}</small><strong>{record.quantity}</strong></span>}{record.location && <span><small>{t('Location')}</small><strong><MapPin /> {record.location}</strong></span>}{record.dueAt && <span><small>Due</small><strong>{new Date(record.dueAt).toLocaleDateString()}</strong></span>}</div>
+        <div className="record-detail-grid">
+          {record.assignee && <span><small>Assigned to / host</small><strong>{record.assignee}</strong></span>}
+          {record.intervalDays !== undefined && <span><small>Repeat</small><strong>{record.intervalDays ? `Every ${record.intervalDays} days` : 'One-off'}</strong></span>}
+          {record.priority && <span><small>Priority</small><strong>{humanStatus(record.priority)}</strong></span>}
+          {record.contact && <span><small>Contact</small><strong>{record.contact}</strong></span>}
+          {record.reference && <span><small>Reference</small><strong>{record.reference}</strong></span>}
+          {record.notes && <span className="wide"><small>Notes</small><strong>{record.notes}</strong></span>}
+        </div>
+        {record.checklist?.length ? <div className="record-checklist"><span>CHECKLIST</span>{record.checklist.map((item, index) => <label key={`${index}-${item}`}><Check /> {item}</label>)}</div> : null}
+        {evidenceActions && <><div className="inspection-evidence"><label><span>Performed by</span><input maxLength={160} value={performedBy} onChange={(event) => setPerformedBy(event.target.value)} placeholder="Name or team" /></label><label><span>Evidence notes</span><textarea maxLength={500} value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Condition, readings, issues, or proof notes" /></label></div><label className={`evidence-photo ${photoError ? 'invalid' : ''}`}><span>{photoDataUrl ? <img src={photoDataUrl} alt="Evidence preview" /> : <QrCode />}</span><strong>{photoDataUrl ? 'Evidence photo ready' : 'Add evidence photo'}</strong><small>Camera or image · compressed on device</small><input type="file" accept="image/*" capture="environment" aria-invalid={Boolean(photoError)} aria-describedby={photoError ? 'evidence-photo-error' : undefined} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(''); try { setPhotoDataUrl(await resizeEvidencePhoto(file)); } catch (error) { setPhotoError(error instanceof Error ? error.message : 'Photo could not be read.'); } }} /></label>{photoError && <p className="deployment-error evidence-photo-error" id="evidence-photo-error" role="alert">{photoError}</p>}{photoDataUrl && <button type="button" className="secondary-button remove-evidence-photo" onClick={() => { setPhotoDataUrl(''); setPhotoError(''); }}>Remove pending photo</button>}</>}
+        <aside className="history-retention-note"><ShieldCheck /><span><strong>History retention before you update</strong><small>Track keeps the latest {maxTrackActivityEvents} events in this workspace and {maxTrackInspectionsPerRecord} inspection/completion entries per record. Export Activity CSV or a JSON backup before older entries roll off.</small></span></aside>
+        <div className="quick-actions"><span>QUICK ACTION</span><div>{actions.map((action) => <button key={action.id} onClick={() => onAction(action.id, { notes: evidence, performedBy, photoDataUrl: photoDataUrl || undefined })}>{action.icon}<strong>{action.label}</strong></button>)}</div></div>
+        {record.inspections?.length ? <details className="inspection-history"><summary>Full retained inspection and completion history ({record.inspections.length}/{maxTrackInspectionsPerRecord})</summary>{record.inspections.map((item) => <div key={item.id}>{item.photoDataUrl ? <img src={item.photoDataUrl} alt="Inspection evidence" /> : <StatusDot status={item.result} />}<span><strong>{humanStatus(item.result)} · {item.performedBy}</strong><small>{item.notes || 'No evidence note'} · {new Date(item.createdAt).toLocaleString()}</small></span></div>)}</details> : null}
+        <details className="label-preview"><summary><QrCode /> {t('View printable label')}</summary><div>{qrImage && <img src={qrImage} alt={`QR code for ${record.name}`} />}<strong>{record.name}</strong><small>{record.code} · Scan with QRY</small></div></details>
+        <button type="button" className="danger-button record-delete" onClick={onDelete}><Trash2 /> Delete record and evidence</button>
+      </>}
     </Sheet>
   );
+}
+
+function RecordEditForm({ collection, record, onCancel, onSave }: { collection: TrackCollection; record: TrackRecord; onCancel: () => void; onSave: (details: TrackRecordDetails) => void }) {
+  const [name, setName] = useState(record.name);
+  const [location, setLocation] = useState(record.location);
+  const [quantity, setQuantity] = useState(String(record.quantity));
+  const [notes, setNotes] = useState(record.notes);
+  const [assignee, setAssignee] = useState(record.assignee ?? '');
+  const [due, setDue] = useState(record.dueAt ? dateInputValue(record.dueAt) : '');
+  const [interval, setInterval] = useState(record.intervalDays === undefined ? '' : String(record.intervalDays));
+  const [priority, setPriority] = useState<TrackRecord['priority']>(record.priority ?? 'normal');
+  const [checklist, setChecklist] = useState((record.checklist ?? []).join('\n'));
+  const [contact, setContact] = useState(record.contact ?? '');
+  const [reference, setReference] = useState(record.reference ?? '');
+  const quantityValue = boundedWholeNumber(quantity, 1_000_000);
+  const intervalValue = interval ? boundedWholeNumber(interval, 3650) : undefined;
+  const validNumbers = quantityValue !== undefined && (!interval || intervalValue !== undefined);
+  const save = () => {
+    if (!name.trim() || !validNumbers) return;
+    onSave({
+      name,
+      location,
+      quantity: quantityValue,
+      notes,
+      assignee: assignee || undefined,
+      dueAt: due ? new Date(`${due}T12:00:00`).getTime() : undefined,
+      intervalDays: intervalValue,
+      priority,
+      checklist: checklist.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 50),
+      contact: contact || undefined,
+      reference: reference || undefined,
+    });
+  };
+  return <div className="record-edit-form" aria-label="Edit record details">
+    <div className="record-form">
+      <label className="track-field"><span>Name (required)</span><input autoFocus required maxLength={160} value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="track-field"><span>Location</span><input maxLength={160} value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Optional location" /></label>
+      {collection.template === 'inventory' && <label className="track-field"><span>Quantity</span><input type="number" min="0" max="1000000" step="1" value={quantity} aria-invalid={quantityValue === undefined} aria-describedby={quantityValue === undefined ? 'edit-record-number-error' : undefined} onChange={(event) => setQuantity(event.target.value)} /></label>}
+      <label className="track-field"><span>Assigned to / host</span><input maxLength={160} value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder="Person or team" /></label>
+      <div className="record-form-grid"><label className="track-field"><span>Due date</span><input type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label><label className="track-field"><span>Priority</span><select value={priority} onChange={(event) => setPriority(event.target.value as TrackRecord['priority'])}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label></div>
+      <label className="track-field"><span>Repeat every (days)</span><input type="number" min="0" max="3650" step="1" value={interval} aria-invalid={Boolean(interval) && intervalValue === undefined} aria-describedby={interval && intervalValue === undefined ? 'edit-record-number-error' : undefined} onChange={(event) => setInterval(event.target.value)} placeholder="Leave blank for one-off" /></label>
+      <label className="track-field"><span>Checklist</span><textarea maxLength={10_050} value={checklist} onChange={(event) => setChecklist(event.target.value)} placeholder="One checkpoint per line" /></label>
+      <label className="track-field"><span>Contact</span><input maxLength={160} value={contact} onChange={(event) => setContact(event.target.value)} placeholder="Phone or email" /></label>
+      <label className="track-field"><span>Reference</span><input maxLength={160} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Registration, order, contract, or certificate" /></label>
+      <label className="track-field"><span>Notes</span><textarea maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional notes" /></label>
+    </div>
+    {!validNumbers && <p className="deployment-error" id="edit-record-number-error" role="alert">Use whole numbers from 0–1,000,000 for quantity and 0–3,650 for repeat days.</p>}
+    <div className="record-edit-actions"><button type="button" className="secondary-button" onClick={onCancel}>Cancel</button><button type="button" className="solid-button" disabled={!name.trim() || !validNumbers} onClick={save}><Save /> Save details</button></div>
+  </div>;
 }
 
 function Sheet({ label, onClose, className = '', children }: { label: string; onClose: () => void; className?: string; children: React.ReactNode }) {
@@ -479,8 +575,19 @@ async function resizeEvidencePhoto(file: File): Promise<string> {
     await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('Photo could not be read.')); image.src = source; });
     const scale = Math.min(1, 960 / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', .72);
+    let width = Math.max(1, Math.round(image.naturalWidth * scale));
+    let height = Math.max(1, Math.round(image.naturalHeight * scale));
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Photo compression is unavailable on this device.');
+      context.drawImage(image, 0, 0, width, height);
+      const compressed = canvas.toDataURL('image/jpeg', Math.max(.4, .72 - attempt * .055));
+      if (isTrackEvidencePhotoDataUrl(compressed)) return compressed;
+      width = Math.max(1, Math.round(width * .82));
+      height = Math.max(1, Math.round(height * .82));
+    }
+    throw new Error(`This photo could not be compressed within Track's ${Math.round(maxTrackEvidencePhotoCharacters / 1_000)} KB evidence limit. Choose a smaller image.`);
   } finally { URL.revokeObjectURL(source); }
 }

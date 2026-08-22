@@ -7,7 +7,7 @@ Android app advertising is configured through **Google AdMob**. AdSense is the u
 - `@capacitor-community/admob` 8.1.0 for Capacitor 8.
 - The dependency is pinned to 8.1.0 and receives a repository-owned, source-shape-checked Android patch during `npm install` and `android:sync`. The patch scopes API 35+ window insets to the banner container and makes native banner removal/update promises settle only after their UI-thread work, preventing the [upstream rotation overlay](https://github.com/capacitor-community/admob/issues/427) and resize/removal race. `npm test` fails if the reviewed patch is absent or the dependency changes shape; review and replace the patch when upgrading the plugin.
 - UMP consent information refresh on every native Android launch.
-- Consent form display when required and an in-app privacy-options entry when UMP requires it.
+- Consent form display when required and an in-app **Privacy and cookie settings** entry when UMP requires it, using Google's recommended revocation-link wording.
 - Consent-status/message requests may contact UMP before an ad request is permitted; actual ad requests remain gated by `canRequestAds`.
 - Google `G` maximum ad-content rating. The intended Play launch audience is **adults ages 18 and older only**. Because the app has no age gate and does not know a user's age, child-directed and under-age-of-consent request tags remain unspecified. The publisher must confirm the matching Play and AdMob console declarations and complete the AdMob policy review before release.
 - One adaptive banner reserved for free users on Home and Library only.
@@ -59,5 +59,6 @@ Primary references:
 
 - Plugin: https://github.com/capacitor-community/admob
 - UMP privacy flow: https://developers.google.com/admob/android/privacy
+- UMP revocation link: https://support.google.com/admob/answer/12226986
 - Android test ads: https://developers.google.com/admob/android/test-ads
 - app-ads.txt: https://support.google.com/admob/answer/9363762

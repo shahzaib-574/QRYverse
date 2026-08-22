@@ -140,6 +140,18 @@ select {
 
 .skip-link:focus { transform: translateY(0); }
 
+.sr-only {
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  position: absolute !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 .app-shell {
   width: min(100%, 520px);
   background: var(--paper);
@@ -441,6 +453,9 @@ a.secondary-button:active {
   box-shadow: var(--shadow-soft);
 }
 
+.kind-icon { color: var(--ink); }
+.template-icon[class*='template-'] { color: var(--ink); background: var(--surface-inset); }
+
 .history-row,
 .empty-card,
 .library-item,
@@ -516,6 +531,20 @@ a.secondary-button:active {
   background: var(--surface-inset);
   box-shadow: var(--shadow-inset);
 }
+
+.paste-value-field {
+  margin-top: 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--ink);
+  font-size: .875rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.paste-sheet .paste-value-field textarea { margin-top: 0; }
+.paste-sheet #paste-value-limit { display: block; margin-top: 6px; }
 
 .qr-preview {
   color: #15372e;
@@ -918,6 +947,9 @@ html[data-mobile-ad-state] .mobile-ad-rail {
   .filter-pills { flex-wrap: wrap; overflow-x: visible; }
   .record-meta { flex-wrap: wrap; gap: 12px; overflow-x: visible; }
   .record-meta > span { min-width: 0; flex: 1 1 calc(50% - 6px); }
+
+  .operations-center-actions,
+  .business-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .team-form,
   .mapping-grid,

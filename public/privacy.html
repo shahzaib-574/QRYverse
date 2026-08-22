@@ -85,6 +85,8 @@
       <h2>5. Retention and security</h2>
       <ul>
         <li>Local data remains until you delete it, clear the app's storage, or uninstall the app. Exported copies are controlled by their destination.</li>
+        <li>App-managed local data is kept in Android's private app storage. Android cloud backup and device-to-device transfer are disabled for that data.</li>
+        <li>Cleartext network traffic is disabled inside the Android app. QRYverse and its included service SDKs use encrypted HTTPS/TLS for network transfers; this does not control external apps or websites you choose to open.</li>
       </ul>
       <p>No system is perfectly secure; protect your device and avoid placing unnecessary secrets in QR values or notes. Any future cloud release requires separate transport, storage, retention, and provider disclosures.</p>
 

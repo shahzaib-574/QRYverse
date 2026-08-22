@@ -15,6 +15,7 @@ const historyKey = 'qry.history.v1';
 const preferencesKey = 'qry.preferences.v1';
 export const maxHistoryStorageBytes = 512 * 1024;
 export const maxHistoryItems = 100;
+export const maxHistoryPayloadCharacters = 64 * 1024;
 
 export class LocalStorageWriteError extends Error {
   constructor(message: string) {
@@ -38,7 +39,7 @@ export function readHistory(): SavedItem[] {
     return value.slice(0, maxHistoryItems).flatMap((entry) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
       const item = entry as Record<string, unknown>;
-      const payload = safeStoredText(item.payload, 64 * 1024);
+      const payload = safeStoredText(item.payload, maxHistoryPayloadCharacters);
       if (!payload) return [];
       return [{
         id: safeStoredText(item.id, 120) || makeId(),
@@ -59,6 +60,9 @@ export function readHistory(): SavedItem[] {
 export function writeHistory(items: SavedItem[]): void {
   if (items.length > maxHistoryItems) {
     throw new LocalStorageWriteError('Your Library already has 100 codes. Delete an unused code, then try saving again.');
+  }
+  if (items.some((item) => item.payload.length > maxHistoryPayloadCharacters)) {
+    throw new LocalStorageWriteError('This code was not saved because its value is longer than 65,536 characters.');
   }
   const serialized = JSON.stringify(items);
   if (new TextEncoder().encode(serialized).byteLength > maxHistoryStorageBytes) {

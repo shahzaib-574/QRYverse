@@ -30,6 +30,10 @@ export type TrackRecord = {
   reference?: string;
 };
 
+export type TrackRecordDetails = Pick<TrackRecord,
+  'name' | 'quantity' | 'location' | 'notes' | 'assignee' | 'dueAt' | 'intervalDays' | 'priority' | 'checklist' | 'contact' | 'reference'
+>;
+
 export type TrackActivity = {
   id: string;
   recordId: string;
@@ -53,6 +57,9 @@ const key = 'qry.track.v1';
 export const maxTrackStorageBytes = 3 * 1024 * 1024;
 export const maxTrackRecordsPerWorkspace = 1000;
 export const maxTrackWorkspaces = 100;
+export const maxTrackEvidencePhotoCharacters = 500_000;
+export const maxTrackActivityEvents = 500;
+export const maxTrackInspectionsPerRecord = 100;
 
 export class TrackStorageError extends Error {
   constructor(message: string) {
@@ -78,7 +85,7 @@ export const templateInfo: Record<TrackTemplate, { label: string; description: s
 export function readTrackCollections(): TrackCollection[] {
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
-    return Array.isArray(value) ? uniqueById(value.slice(0, 100).flatMap((entry, index) => sanitizeStoredCollection(entry, index))) : [];
+    return Array.isArray(value) ? uniqueById(value.slice(0, maxTrackWorkspaces).flatMap((entry, index) => sanitizeStoredCollection(entry, index))) : [];
   } catch {
     return [];
   }
@@ -87,6 +94,12 @@ export function readTrackCollections(): TrackCollection[] {
 export function writeTrackCollections(collections: TrackCollection[]): void {
   if (collections.length > maxTrackWorkspaces) {
     throw new TrackStorageError(`Track supports up to ${maxTrackWorkspaces} local workspaces. Delete one before creating or restoring another.`);
+  }
+  const hasInvalidEvidencePhoto = collections.some((collection) => collection.records.some((record) =>
+    record.inspections?.some((inspection) => inspection.photoDataUrl !== undefined && !isTrackEvidencePhotoDataUrl(inspection.photoDataUrl)),
+  ));
+  if (hasInvalidEvidencePhoto) {
+    throw new TrackStorageError('This change was not saved because an evidence photo is too large or invalid. Remove the pending evidence photo or choose a smaller image, then try again.');
   }
   const serialized = JSON.stringify(collections);
   const bytes = new TextEncoder().encode(serialized).byteLength;
@@ -116,10 +129,42 @@ export function parseTrackPayload(payload: string): { collectionId: string; reco
 
 export function nextRecordCode(collection: TrackCollection): string {
   const prefix = templateInfo[collection.template].prefix;
-  const used = new Set(collection.records.map((record) => record.code));
+  const used = new Set(collection.records.map((record) => record.code.toLowerCase()));
   let number = collection.records.length + 1;
-  while (used.has(`${prefix}-${String(number).padStart(3, '0')}`)) number += 1;
+  while (used.has(`${prefix}-${String(number).padStart(3, '0')}`.toLowerCase())) number += 1;
   return `${prefix}-${String(number).padStart(3, '0')}`;
+}
+
+export function updateTrackRecordDetails(collection: TrackCollection, recordId: string, details: TrackRecordDetails): TrackCollection {
+  const record = collection.records.find((item) => item.id === recordId);
+  if (!record) return collection;
+  const quantity = Number.isFinite(details.quantity)
+    ? Math.max(0, Math.min(1_000_000, Math.trunc(details.quantity)))
+    : record.quantity;
+  const status = collection.template === 'inventory' && quantity !== record.quantity
+    ? quantity === 0 ? 'out_of_stock' : 'in_stock'
+    : record.status;
+  const updated: TrackRecord = {
+    ...record,
+    name: details.name.trim().slice(0, 160) || record.name,
+    status,
+    quantity,
+    location: details.location.trim().slice(0, 160),
+    notes: details.notes.trim().slice(0, 500),
+    assignee: details.assignee?.trim().slice(0, 160) || undefined,
+    dueAt: details.dueAt,
+    intervalDays: details.intervalDays === undefined
+      ? undefined
+      : Math.max(0, Math.min(3650, Math.trunc(details.intervalDays))),
+    priority: details.priority,
+    checklist: details.checklist?.slice(0, 50).map((item) => item.trim().slice(0, 200)).filter(Boolean),
+    contact: details.contact?.trim().slice(0, 160) || undefined,
+    reference: details.reference?.trim().slice(0, 160) || undefined,
+  };
+  return {
+    ...collection,
+    records: collection.records.map((item) => item.id === recordId ? updated : item),
+  };
 }
 
 export type TrackAction = 'checkout' | 'return' | 'service' | 'present' | 'late' | 'leave' | 'add' | 'subtract' | 'pass' | 'fail' | 'complete' | 'reset';
@@ -150,12 +195,14 @@ export function applyTrackAction(collection: TrackCollection, recordId: string, 
   if (duplicate) return { collection, duplicate: true };
 
   const inspectionResult: TrackInspection['result'] | undefined = action === 'pass' ? 'passed' : action === 'fail' ? 'failed' : action === 'complete' ? 'completed' : undefined;
-  const nextDueAt = inspectionResult && record.intervalDays
-    ? Date.now() + record.intervalDays * 86_400_000
+  const nextDueAt = inspectionResult
+    ? record.intervalDays
+      ? Date.now() + record.intervalDays * 86_400_000
+      : inspectionResult === 'failed' ? record.dueAt : undefined
     : record.dueAt;
   const inspections: TrackInspection[] | undefined = inspectionResult ? [{
     id: makeTrackId(), result: inspectionResult, notes: evidence.notes?.trim() ?? '', performedBy: evidence.performedBy?.trim() || record.assignee || 'Device user', createdAt: Date.now(), photoDataUrl: evidence.photoDataUrl,
-  }, ...(record.inspections ?? [])].slice(0, 100) : record.inspections;
+  }, ...(record.inspections ?? [])].slice(0, maxTrackInspectionsPerRecord) : record.inspections;
   const updatedRecord = { ...record, status, quantity, dueAt: nextDueAt, inspections };
   const activity: TrackActivity = {
     id: makeTrackId(), recordId, recordName: record.name, action: label, detail, createdAt: Date.now(),
@@ -165,7 +212,7 @@ export function applyTrackAction(collection: TrackCollection, recordId: string, 
     collection: {
       ...collection,
       records: collection.records.map((item) => item.id === recordId ? updatedRecord : item),
-      activity: [activity, ...collection.activity].slice(0, 500),
+      activity: [activity, ...collection.activity].slice(0, maxTrackActivityEvents),
     },
   };
 }
@@ -184,6 +231,17 @@ export function collectionCsv(collection: TrackCollection): string {
   ].join('\r\n');
 }
 
+export function collectionActivityCsv(collection: TrackCollection): string {
+  const cells = (values: Array<string | number>) => values.map(quoteCsvCell).join(',');
+  const codes = new Map(collection.records.map((record) => [record.id, record.code]));
+  return [
+    cells(['Created', 'Record code', 'Record name', 'Action', 'Detail']),
+    ...collection.activity.map((event) => cells([
+      new Date(event.createdAt).toISOString(), codes.get(event.recordId) ?? '', event.recordName, event.action, event.detail,
+    ])),
+  ].join('\r\n');
+}
+
 function sanitizeStoredCollection(value: unknown, index: number): TrackCollection[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
   const raw = value as Record<string, unknown>;
@@ -193,7 +251,7 @@ function sanitizeStoredCollection(value: unknown, index: number): TrackCollectio
     ? raw.records.slice(0, maxTrackRecordsPerWorkspace).flatMap((record, recordIndex) => sanitizeStoredRecord(record, recordIndex))
     : [];
   const records = uniqueById(recordCandidates);
-  const activityCandidates = Array.isArray(raw.activity) ? raw.activity.slice(0, 500).flatMap((event) => {
+  const activityCandidates = Array.isArray(raw.activity) ? raw.activity.slice(0, maxTrackActivityEvents).flatMap((event) => {
     if (!event || typeof event !== 'object' || Array.isArray(event)) return [];
     const item = event as Record<string, unknown>;
     return [{
@@ -222,12 +280,12 @@ function sanitizeStoredRecord(value: unknown, index: number): TrackRecord[] {
   const name = storedText(raw.name, 160);
   if (!name) return [];
   const quantity = Number(raw.quantity);
-  const inspections = Array.isArray(raw.inspections) ? raw.inspections.slice(0, 100).flatMap((inspection) => {
+  const inspections = Array.isArray(raw.inspections) ? raw.inspections.slice(0, maxTrackInspectionsPerRecord).flatMap((inspection) => {
     if (!inspection || typeof inspection !== 'object' || Array.isArray(inspection)) return [];
     const item = inspection as Record<string, unknown>;
     const result = String(item.result);
     if (!['passed', 'failed', 'completed'].includes(result)) return [];
-    const photoDataUrl = typeof item.photoDataUrl === 'string' && item.photoDataUrl.length <= 500_000 && /^data:image\/(?:jpeg|png|webp);base64,/i.test(item.photoDataUrl) ? item.photoDataUrl : undefined;
+    const photoDataUrl = isTrackEvidencePhotoDataUrl(item.photoDataUrl) ? item.photoDataUrl : undefined;
     return [{ id: storedText(item.id, 120) || makeTrackId(), result: result as TrackInspection['result'], notes: storedText(item.notes, 500), performedBy: storedText(item.performedBy, 160), createdAt: storedTimestamp(item.createdAt), photoDataUrl }];
   }) : undefined;
   return [{
@@ -248,6 +306,12 @@ function sanitizeStoredRecord(value: unknown, index: number): TrackRecord[] {
     contact: storedText(raw.contact, 160) || undefined,
     reference: storedText(raw.reference, 160) || undefined,
   }];
+}
+
+export function isTrackEvidencePhotoDataUrl(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length <= maxTrackEvidencePhotoCharacters
+    && /^data:image\/(?:jpeg|png|webp);base64,/i.test(value);
 }
 
 function storedText(value: unknown, limit: number): string {

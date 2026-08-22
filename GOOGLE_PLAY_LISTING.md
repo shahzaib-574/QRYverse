@@ -138,6 +138,7 @@ Capture checklist for every screenshot:
 
 - [ ] Choose and verify the publisher legal name, public support email, website, and postal details.
 - [ ] Complete [Play developer identity verification and package registration](https://support.google.com/googleplay/android-developer/answer/16984799?hl=en) for `com.royal.qrystudio` before Google's September 30, 2026 deadline.
+- [ ] If this is a new personal developer account, complete [real Android device verification](https://support.google.com/googleplay/android-developer/answer/14316361?hl=en) in the Play Console mobile app with an eligible, non-rooted physical Android 10+ device.
 - [ ] Publish reviewed `/privacy.html`, `/terms.html`, and `/account-deletion.html` at durable HTTPS URLs.
 - [ ] Remove every `[RELEASE ...]`, `[PUBLISHER ...]`, and legal-review placeholder from public artifacts.
 - [ ] Confirm `VITE_QRY_CLOUD_API_URL` is absent and the release UI offers no account creation, cloud backup, or hosted redirect claim.

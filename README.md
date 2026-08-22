@@ -56,6 +56,7 @@ npm run server:typecheck -- --noEmit
 npm run server:build
 npm run build
 python scripts/prepare-play-screenshots.py
+npm audit --omit=dev --audit-level=high
 ```
 
 GitHub Actions runs the same web, server, Play-asset, dependency-audit, and Android debug-candidate checks for pushes to `main` and pull requests.
@@ -74,11 +75,11 @@ npm run android:local-clean
 npm run android:local-verify
 ```
 
-The verification command builds the installable debug APK, runs Android lint and JVM release-contract tests, and compiles the on-device contract test APK. Outputs are written under `android/app/build/outputs/apk/`. See [ANDROID_RELEASE_CHECKLIST.md](./ANDROID_RELEASE_CHECKLIST.md) for artifact verification, device testing, signing, and Play rollout steps.
+The verification command applies and checks the reviewed native AdMob compatibility patch, builds the installable debug APK, runs Android lint and JVM release-contract tests, compiles the on-device contract test APK, and audits the actual APK's signing, manifest, SDK levels, AdMob/UMP profile, ABI coverage, and 16 KiB alignment. Outputs are written under `android/app/build/outputs/apk/`. See [ANDROID_RELEASE_CHECKLIST.md](./ANDROID_RELEASE_CHECKLIST.md) for artifact verification, device testing, signing, and Play rollout steps.
 
 Use `npm run android:local-bundle` only after release signing and Play configuration are ready.
 
-The Android project requests camera access only when the user starts a scan.
+The Android project requests scanner camera access only when the user starts a live scan. A separate evidence-photo camera or picker opens only when the user deliberately chooses to attach evidence to a Track action.
 
 Advertising uses AdMob rather than website AdSense. Development stays on Google's official test inventory until production IDs and an explicit `VITE_ADMOB_TEST_MODE=false` are supplied. See [ADMOB_RELEASE_SETUP.md](./ADMOB_RELEASE_SETUP.md).
 

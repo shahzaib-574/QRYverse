@@ -119,11 +119,11 @@ function analyseUrl(url: URL): ScanAnalysis {
     reasons.push('The link hides credentials before the domain.');
   }
   if (/^xn--/i.test(url.hostname) || url.hostname.includes('.xn--')) {
-    risk = 'caution';
+    if (risk !== 'danger') risk = 'caution';
     reasons.push('The domain uses encoded international characters.');
   }
   if (/^(\d{1,3}\.){3}\d{1,3}$/.test(url.hostname)) {
-    risk = 'caution';
+    if (risk !== 'danger') risk = 'caution';
     reasons.push('The destination uses a raw IP address.');
   }
   if (shorteners.has(url.hostname.replace(/^www\./, ''))) {
@@ -155,9 +155,11 @@ function analyseUrl(url: URL): ScanAnalysis {
 
 function toHttpUrl(value: string): URL | undefined {
   try {
-    const candidate = /^[a-z][a-z\d+.-]*:/i.test(value) ? value : `https://${value}`;
+    const hasExplicitScheme = /^[a-z][a-z\d+.-]*:/i.test(value);
+    const candidate = hasExplicitScheme ? value : `https://${value}`;
     const parsed = new URL(candidate);
-    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname.includes('.')) return undefined;
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) return undefined;
+    if (!hasExplicitScheme && !parsed.hostname.includes('.')) return undefined;
     return parsed;
   } catch {
     return undefined;
