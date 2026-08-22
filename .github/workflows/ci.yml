@@ -58,7 +58,48 @@ jobs:
           npm run server:build
           npm run build
           python scripts/prepare-play-screenshots.py
-          npm audit --omit=dev --audit-level=high
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit the build dependency graph
+        run: npm audit --audit-level=high
 
       - name: Verify Android debug candidate and binary contract
         run: npm run android:local-verify
+
+      - name: Generate immutable artifact evidence
+        shell: pwsh
+        run: |
+          & ./scripts/write-artifact-evidence.ps1 `
+            -ArtifactPath @(
+              'android/app/build/outputs/apk/debug/app-debug.apk'
+              'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
+            ) `
+            -OutputDirectory 'output/ci-artifact-evidence' `
+            -RequireCleanTrackedTree
+
+      - name: Retain the exact verified debug artifacts
+        id: upload-debug-artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qryverse-debug-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            android/app/build/reports/lint-results-debug.html
+            android/app/build/test-results/testDebugUnitTest/*.xml
+            output/ci-artifact-evidence/artifact-evidence.json
+            output/ci-artifact-evidence/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record the GitHub artifact digest
+        shell: pwsh
+        run: |
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value @'
+          ### Verified Android debug artifact
+
+          Archive SHA-256: `${{ steps.upload-debug-artifacts.outputs.artifact-digest }}`
+          '@
