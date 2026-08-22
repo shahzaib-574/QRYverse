@@ -10,6 +10,8 @@ export default defineConfig(({ mode }) => {
     admobBannerConfigured: Boolean(env.VITE_ADMOB_BANNER_ID?.trim()),
     admobBannerId: env.VITE_ADMOB_BANNER_ID?.trim() ?? '',
     admobTestMode: env.VITE_ADMOB_TEST_MODE !== 'false',
+    admobConsentDebugGeography: env.VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY?.trim().toUpperCase() || 'DISABLED',
+    admobConsentTestDevicesConfigured: Boolean(env.VITE_ADMOB_TEST_DEVICE_IDS?.trim()),
   };
   return {
     plugins: [react(), emitBuildProfile(buildProfile)],

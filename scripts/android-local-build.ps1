@@ -8,6 +8,8 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $toolsRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot '.tools'))
 $workspaceJdk = Join-Path $toolsRoot 'jdk21'
 $workspaceSdk = Join-Path $toolsRoot 'android-sdk'
+$requiredBuildToolsVersion = '35.0.0'
+$requiresBinaryAudit = $Task -eq 'verifyDebug'
 
 $jdkRoot = $null
 if (Test-Path -LiteralPath $workspaceJdk -PathType Container) {
@@ -27,9 +29,22 @@ if (-not (Test-Path -LiteralPath $jdkRelease -PathType Leaf) -or (Get-Content -L
 $sdkRoot = @($workspaceSdk, $env:ANDROID_SDK_ROOT, $env:ANDROID_HOME) |
   Where-Object { $_ } |
   ForEach-Object { [System.IO.Path]::GetFullPath($_) } |
-  Where-Object { Test-Path -LiteralPath (Join-Path $_ 'platforms\android-36\android.jar') -PathType Leaf } |
+  Where-Object {
+    (Test-Path -LiteralPath (Join-Path $_ 'platforms\android-36\android.jar') -PathType Leaf) -and (
+      -not $requiresBinaryAudit -or (
+        (Test-Path -LiteralPath (Join-Path $_ "build-tools\$requiredBuildToolsVersion\zipalign.exe") -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $_ "build-tools\$requiredBuildToolsVersion\aapt.exe") -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $_ "build-tools\$requiredBuildToolsVersion\apksigner.bat") -PathType Leaf)
+      )
+    )
+  } |
   Select-Object -First 1
-if (-not $sdkRoot) { throw 'Android SDK API 36 was not found in .tools, ANDROID_SDK_ROOT, or ANDROID_HOME.' }
+if (-not $sdkRoot) {
+  if ($requiresBinaryAudit) {
+    throw "Android SDK API 36 and Build Tools $requiredBuildToolsVersion audit tools were not found in .tools, ANDROID_SDK_ROOT, or ANDROID_HOME."
+  }
+  throw 'Android SDK API 36 was not found in .tools, ANDROID_SDK_ROOT, or ANDROID_HOME.'
+}
 
 $env:JAVA_HOME = $jdkRoot
 $env:ANDROID_HOME = $sdkRoot
@@ -50,6 +65,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Gradle $($appTasks -join ', ') failed with exit code $LASTEXITCODE." }
   } finally {
     Pop-Location
+  }
+  if ($Task -eq 'verifyDebug') {
+    & (Join-Path $projectRoot 'scripts\android-binary-audit.ps1') -ArtifactProfile Debug -SdkRoot $sdkRoot -BuildToolsVersion $requiredBuildToolsVersion
   }
 } finally {
   Pop-Location

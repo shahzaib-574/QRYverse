@@ -23,6 +23,7 @@ import { initializeBilling, purchasePlan, restoreBilling } from '../src/lib/bill
 import { lastItem } from '../src/lib/collections';
 import { neutralizeSpreadsheetFormula, quoteCsvCell } from '../src/lib/csv';
 import { assertPdfTextSupported, pdfSafeText } from '../src/lib/pdf-text';
+import { mobileBannerFallbackMargin, resolveMobileBannerMargin } from '../src/lib/ad-layout';
 
 function withFailingLocalStorage(run: () => void): void {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
@@ -42,6 +43,10 @@ function withFailingLocalStorage(run: () => void): void {
 
 assert.equal(lastItem(['older-dialog', 'newer-dialog']), 'newer-dialog');
 assert.equal(lastItem([]), undefined);
+assert.equal(resolveMobileBannerMargin(800, 696, 0), 116);
+assert.equal(resolveMobileBannerMargin(800, 678, 0), 134);
+assert.equal(resolveMobileBannerMargin(800, 672, 24), 116);
+assert.equal(resolveMobileBannerMargin(800, undefined, 0), mobileBannerFallbackMargin);
 for (const prefix of ['=', '+', '-', '@', ' =', '\t@']) assert.equal(neutralizeSpreadsheetFormula(`${prefix}SUM(A1:A2)`).startsWith("'"), true);
 assert.equal(quoteCsvCell(-12), '"-12"');
 assert.equal(pdfSafeText('Crème — مضخة').includes('—'), false);

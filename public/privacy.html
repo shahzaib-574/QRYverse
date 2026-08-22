@@ -49,6 +49,10 @@
       </ul>
       <p>Camera and gallery images used for QR recognition are processed on the device. QRYverse does not add scanner images to your library. Evidence photos you deliberately attach to a Track record remain part of that record.</p>
 
+      <h3>Barcode-recognition diagnostics</h3>
+      <p>QRYverse uses Google ML Kit for barcode recognition. Google's published disclosure does not list scanner images or decoded QR values as collected data, but says ML Kit collects device and app information, per-installation or device identifiers, performance and API-configuration metrics, input and output sizes, feature versions, event types, and error codes for diagnostics and usage analytics. QRYverse enables auto-zoom for live scans, so ML Kit can additionally collect a dynamically generated scan-session ID, zoom-level changes, and predicted coordinates of a possible barcode bounding box. Google says this SDK data is encrypted in transit and is not transferred to third parties.</p>
+      <p>Learn more in <a href="https://developers.google.com/ml-kit/android-data-disclosure">Google's ML Kit Android data disclosure</a>.</p>
+
       <h3>Future account and cloud information — not enabled in v1</h3>
       <p>The first Play release offers no account creation or QRYverse Cloud connection. If a future build enables Cloud, its updated policy will explain collection of account, organization, session, backup, and hosted-campaign data before that feature becomes available.</p>
       <p>If enabled later, the current development foundation would receive a name, email address, organization name, and password and store a salted password hash, hashed session tokens, membership/role information, and session expiry times.</p>
@@ -58,7 +62,7 @@
       <p>V1 campaigns are app-routed and local. Public hosted redirects and server-side aggregate scan counts require a future production service and updated disclosure.</p>
 
       <h3>Advertising and consent</h3>
-      <p>The free Android build may show Google AdMob banner ads. Google Mobile Ads and its consent tools may process device or account identifiers, IP-derived general location, ad interactions, and diagnostic information for advertising, measurement, fraud prevention, security, and compliance. Where required, the app presents Google's consent message before requesting ads and provides access to privacy choices. Development builds use Google's test ad units.</p>
+      <p>The free Android build may show Google AdMob banner ads. At startup, the app asks Google's User Messaging Platform (UMP) for current consent information. That consent-information request can transmit documented consent and device data to Google before a consent message is shown and before ads are allowed. The app requests an ad only after UMP reports that ads may be requested. Google Mobile Ads and UMP may process device or account identifiers, IP-derived general location, ad and consent interactions, and diagnostic information for advertising, measurement, fraud prevention, security, and compliance. Where required, the app presents Google's consent message and provides access to privacy choices. Development builds use Google's test ad units.</p>
       <p>Learn more in <a href="https://policies.google.com/privacy">Google's Privacy Policy</a> and <a href="https://support.google.com/admob/answer/6128543">AdMob's privacy guidance</a>.</p>
 
       <h3>Purchases</h3>
@@ -67,14 +71,16 @@
       <h2>3. When information leaves your device</h2>
       <p>QRYverse transmits information only for a feature you activate or for a configured third-party service:</p>
       <ul>
-        <li>when the Android build requests an ad after the applicable privacy flow;</li>
+        <li>when the Android build asks Google UMP for consent information at startup, before any ad request and potentially before a consent message is shown;</li>
+        <li>when the Android build later requests an ad, only after UMP reports that ads may be requested;</li>
+        <li>when you start live or gallery barcode recognition, ML Kit may send the diagnostic and usage data described above;</li>
         <li>when you explicitly send a webhook test to an endpoint you entered; or</li>
         <li>when you use the system share sheet or export a file to a destination you select.</li>
       </ul>
       <p>QRYverse does not request access to your address book or device location. Recognizing a contact card or geographic coordinate inside a QR code does not grant that permission.</p>
 
       <h2>4. Purposes and legal bases</h2>
-      <p>Information is used to provide local scanner, library, Track, campaign, support, security, and advertising-supported access. Depending on where you live, processing may rely on performing a contract, legitimate interests in operating and protecting the app, legal obligations, or consent. You may withdraw advertising consent through the app's privacy options where available.</p>
+      <p>Information is used to provide local scanner, library, Track, campaign, support, security, and advertising-supported access. ML Kit diagnostic and usage data supports barcode-feature reliability and performance; Mobile Ads data supports advertising, measurement, fraud prevention, security, and compliance. Depending on where you live, processing may rely on performing a contract, legitimate interests in operating and protecting the app, legal obligations, or consent. You may withdraw advertising consent through the app's privacy options where available.</p>
 
       <h2>5. Retention and security</h2>
       <ul>

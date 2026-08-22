@@ -8,6 +8,8 @@ def googleTestAdmobPublisherPrefix = "ca-app-pub-3940256099942544"
 def admobAppId = System.getenv("QRY_ADMOB_APP_ID")?.trim()
 def admobBannerId = System.getenv("VITE_ADMOB_BANNER_ID")?.trim()
 def admobTestMode = System.getenv("VITE_ADMOB_TEST_MODE")?.trim()
+def admobConsentDebugGeography = System.getenv("VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY")?.trim()
+def admobConsentTestDeviceIds = System.getenv("VITE_ADMOB_TEST_DEVICE_IDS")?.trim()
 def cloudApiUrl = System.getenv("VITE_QRY_CLOUD_API_URL")?.trim()
 
 def releaseKeystorePath = System.getenv("QRY_UPLOAD_KEYSTORE")
@@ -23,6 +25,14 @@ def validateReleaseConfiguration = {
         file("src/main/assets/public/privacy.html"),
         file("src/main/assets/public/terms.html"),
         file("src/main/assets/public/account-deletion.html")
+    ]
+    def unresolvedLegalMarkers = [
+        'class="placeholder"',
+        'Version 1.0 draft',
+        'Release owner action required',
+        'This draft is not ready to publish',
+        'must list its actual support providers here before release',
+        'must insert a lawful liability cap here'
     ]
 
     if (!releaseKeystorePath) releaseConfigurationErrors += "QRY_UPLOAD_KEYSTORE is required"
@@ -60,6 +70,12 @@ def validateReleaseConfiguration = {
     if (!"false".equalsIgnoreCase(admobTestMode)) {
         releaseConfigurationErrors += "VITE_ADMOB_TEST_MODE must be explicitly set to false"
     }
+    if (admobConsentTestDeviceIds) {
+        releaseConfigurationErrors += "VITE_ADMOB_TEST_DEVICE_IDS must be empty for a release build"
+    }
+    if (admobConsentDebugGeography && !"DISABLED".equalsIgnoreCase(admobConsentDebugGeography)) {
+        releaseConfigurationErrors += "VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY must be DISABLED for a release build"
+    }
     if (cloudApiUrl) {
         releaseConfigurationErrors += "VITE_QRY_CLOUD_API_URL must be unset for the cloud-off v1 launch profile"
     }
@@ -89,6 +105,12 @@ def validateReleaseConfiguration = {
             if (buildProfile.admobTestMode != false) {
                 releaseConfigurationErrors += "the synchronized web build still has AdMob test mode enabled"
             }
+            if (buildProfile.admobConsentDebugGeography != "DISABLED") {
+                releaseConfigurationErrors += "the synchronized web build still forces a UMP debug geography"
+            }
+            if (buildProfile.admobConsentTestDevicesConfigured != false) {
+                releaseConfigurationErrors += "the synchronized web build still contains UMP test-device configuration"
+            }
         } catch (Exception ignored) {
             releaseConfigurationErrors += "qry-build-profile.json is invalid"
         }
@@ -100,8 +122,9 @@ def validateReleaseConfiguration = {
             releaseConfigurationErrors += "synchronized ${legalFile.name} is required"
         } else {
             def legalText = legalFile.getText('UTF-8')
-            if (legalText.contains('class="placeholder"') || legalText ==~ /(?s).*\[[A-Z][^\]]*(REQUIRED|LEGAL REVIEW)[^\]]*\].*/) {
-                releaseConfigurationErrors += "${legalFile.name} still contains release or legal-review placeholders"
+            def unresolvedMarker = unresolvedLegalMarkers.find { marker -> legalText.contains(marker) }
+            if (unresolvedMarker || legalText ==~ /(?s).*\[[A-Z][^\]]*(REQUIRED|LEGAL REVIEW)[^\]]*\].*/) {
+                releaseConfigurationErrors += "${legalFile.name} still contains release, draft, or legal-review markers"
             }
         }
     }

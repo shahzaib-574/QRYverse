@@ -49,6 +49,7 @@ import { initializeBilling, type BillingSnapshot } from './lib/billing';
 import {
   initialMobileAdsState,
   initializeMobileAds,
+  setMobileAdsAppActive,
   setMobileBannerVisible,
   showMobilePrivacyOptions,
   shutdownMobileAds,
@@ -92,6 +93,7 @@ export default function App() {
   const [scanSheet, setScanSheet] = useState(false);
   const [result, setResult] = useState<{ payload: string; analysis: ScanAnalysis }>();
   const [detectedCodes, setDetectedCodes] = useState<string[]>([]);
+  const [scannerBusy, setScannerBusy] = useState(false);
   const [trackTarget, setTrackTarget] = useState<{ collectionId: string; recordId: string }>();
   const [billing, setBilling] = useState<BillingSnapshot>({ status: 'loading', pro: false, plans: [] });
   const [ads, setAds] = useState<MobileAdsState>(initialMobileAdsState);
@@ -172,9 +174,18 @@ export default function App() {
   }, [billing.status]);
 
   useEffect(() => {
-    const shouldShow = !billing.pro && (tab === 'home' || tab === 'library') && !scanSheet && !result && detectedCodes.length === 0;
+    const shouldShow = !billing.pro && (tab === 'home' || tab === 'library') && !scannerBusy && !scanSheet && !result && detectedCodes.length === 0;
     void setMobileBannerVisible(shouldShow).catch(() => undefined);
-  }, [ads.canRequestAds, billing.pro, detectedCodes.length, result, scanSheet, tab]);
+  }, [ads.canRequestAds, billing.pro, detectedCodes.length, result, scanSheet, scannerBusy, tab]);
+
+  useEffect(() => {
+    let removeListener: (() => Promise<void>) | undefined;
+    CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      void setMobileAdsAppActive(isActive).catch(() => undefined);
+      if (isActive) void initializeMobileAds().then(setAds);
+    }).then((handle) => { removeListener = () => handle.remove(); }).catch(() => undefined);
+    return () => { void removeListener?.(); };
+  }, []);
 
   useEffect(() => () => { void shutdownMobileAds(); }, []);
 
@@ -299,26 +310,33 @@ export default function App() {
   };
 
   const beginScan = async () => {
-    await setMobileBannerVisible(false).catch(() => undefined);
-    const outcome = await scanWithDevice();
-    if (outcome.status === 'success') await handleDetected(outcome.values);
-    if (outcome.status === 'unavailable') {
-      setToast(outcome.message);
-      setScanSheet(true);
+    setScannerBusy(true);
+    try {
+      await setMobileBannerVisible(false).catch(() => undefined);
+      const outcome = await scanWithDevice();
+      if (outcome.status === 'success') await handleDetected(outcome.values);
+      if (outcome.status === 'unavailable') {
+        setToast(outcome.message);
+        setScanSheet(true);
+      }
+      if (outcome.status === 'permission-denied') {
+        setToast({ message: outcome.message, actionLabel: 'Open settings', onAction: () => { void openScannerSettings().catch(() => setToast('Android settings could not be opened')); } });
+      }
+    } finally {
+      setScannerBusy(false);
     }
-    if (outcome.status === 'permission-denied') {
-      setToast({ message: outcome.message, actionLabel: 'Open settings', onAction: () => { void openScannerSettings().catch(() => setToast('Android settings could not be opened')); } });
-      await setMobileBannerVisible(!billing.pro && (tab === 'home' || tab === 'library')).catch(() => undefined);
-    }
-    if (outcome.status === 'cancelled') await setMobileBannerVisible(!billing.pro && (tab === 'home' || tab === 'library')).catch(() => undefined);
   };
 
   const scanGallery = async () => {
-    await setMobileBannerVisible(false).catch(() => undefined);
-    const outcome = await scanImageFromGallery();
-    if (outcome.status === 'success') await handleDetected(outcome.values);
-    if (outcome.status === 'unavailable') setToast(outcome.message);
-    if (outcome.status !== 'success') await setMobileBannerVisible(!billing.pro && (tab === 'home' || tab === 'library')).catch(() => undefined);
+    setScannerBusy(true);
+    try {
+      await setMobileBannerVisible(false).catch(() => undefined);
+      const outcome = await scanImageFromGallery();
+      if (outcome.status === 'success') await handleDetected(outcome.values);
+      if (outcome.status === 'unavailable') setToast(outcome.message);
+    } finally {
+      setScannerBusy(false);
+    }
   };
 
   const toggleFavourite = (id: string) => {
@@ -535,6 +553,7 @@ export default function App() {
         )}
       </main>
 
+      <div className="mobile-ad-rail" aria-hidden="true" />
       <nav className="bottom-nav" aria-label="Main navigation">
         <NavButton active={tab === 'home'} label={t('Home')} icon={<HomeIcon />} onClick={() => navigateTo('home')} />
         <NavButton active={tab === 'create'} label={t('Create')} icon={<Plus />} onClick={() => navigateTo('create')} />

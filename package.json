@@ -4,16 +4,19 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/patch-admob.mjs",
+    "patch:admob": "node scripts/patch-admob.mjs",
+    "test:admob-patch": "node scripts/patch-admob.mjs --check",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint src scripts server",
-    "test": "tsx scripts/selfcheck.ts && tsx server/selfcheck.ts",
+    "test": "npm run test:admob-patch && tsx scripts/selfcheck.ts && tsx server/selfcheck.ts",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
     "server:typecheck": "tsc -p tsconfig.server.json",
     "server:build": "tsc -p tsconfig.server.build.json",
     "android:add": "npm run build && cap add android",
-    "android:sync": "npm run build && cap sync android",
+    "android:sync": "npm run patch:admob && npm run build && cap sync android",
     "android:debug": "npm run android:sync && cd android && gradlew.bat assembleDebug",
     "android:local-clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 clean",
     "android:local-verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 verifyDebug",
@@ -21,6 +24,7 @@
     "android:local-lint": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 lintDebug",
     "android:local-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 testDebugUnitTest",
     "android:local-instrumentation-apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 assembleDebugAndroidTest",
+    "android:audit-debug": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-binary-audit.ps1 -ArtifactProfile Debug",
     "android:local-bundle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 bundleRelease",
     "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease"
   },
@@ -28,7 +32,7 @@
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "@capacitor-community/admob": "^8.1.0",
+    "@capacitor-community/admob": "8.1.0",
     "@capacitor-mlkit/barcode-scanning": "^8.0.0",
     "@capacitor/android": "^8.5.0",
     "@capacitor/app": "^8.1.1",

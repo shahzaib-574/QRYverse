@@ -688,6 +688,23 @@ a.secondary-button:active {
   box-shadow: 0 -12px 32px rgba(20, 53, 43, .10);
 }
 
+.mobile-ad-rail { display: none; }
+
+html[data-mobile-ad-state] .mobile-ad-rail {
+  width: 100vw;
+  height: var(--ad-rail-height);
+  position: fixed;
+  z-index: 29;
+  left: 0;
+  bottom: calc(var(--ad-rail-bottom) + env(safe-area-inset-bottom, 0px));
+  display: block;
+  border-block: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 -8px 24px rgba(20, 53, 43, .08);
+  pointer-events: auto;
+  touch-action: none;
+}
+
 .nav-button {
   height: 68px;
   min-width: 52px;

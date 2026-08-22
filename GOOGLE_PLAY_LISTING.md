@@ -55,7 +55,7 @@ The first Play release creates no account and does not connect to QRYverse Cloud
 
 LOCAL-FIRST BY DESIGN
 
-Camera and gallery scans are processed on your device. You decide what to save, export, share, publish, or back up. Camera access is requested only when you start a scan. QRYverse does not request your address book or device location.
+Camera and gallery scans are processed on your device. You decide what to save, export, share, publish, or back up. Camera access is used only after you start a live scan or deliberately choose to capture an evidence photo. QRYverse does not request your address book or device location.
 
 QRYverse's link safety labels are on-device hints, not antivirus or a guarantee that a destination is safe. Always review a destination before opening it or acting on its instructions.
 
@@ -86,6 +86,22 @@ Before upload, verify the current Play Console requirements for accepted formats
 7. `07-operations.png` — device-local reporting summary and export actions.
 8. `08-studio.png` — local dynamic campaigns, manual backup boundary, and business tools.
 
+### Play Console alt text
+
+Add concise, factual alt text in Play Console for every uploaded graphic. Describe the visible experience instead of repeating keywords or making claims that the frame cannot prove, keep each description within the Console's current limit, and recheck it whenever a capture changes.
+
+| Asset | Suggested alt text |
+| --- | --- |
+| Feature graphic | A sculpted green QR portal linking cards for inventory, workflows, and analytics. |
+| `01-home.png` | QRYverse Home with private QR scanning, quick creation, and recent on-device activity. |
+| `02-scan-result.png` | QR result preview showing the destination and explainable on-device link safety guidance. |
+| `03-create.png` | QR creator with website, text, Wi-Fi, and contact modes beside a live code preview. |
+| `04-library.png` | Local QR library with search, scan and creation filters, favorites, and item actions. |
+| `05-track.png` | QRY Track inventory workspace with record totals, operations tools, and recent updates. |
+| `06-record-actions.png` | Inventory record action sheet with quantity, status, and quick stock update controls. |
+| `07-operations.png` | Device-local operations dashboard with reporting, export, import, labels, and backup tools. |
+| `08-studio.png` | QRY Studio with local campaigns, scan counts, backup controls, and business tools. |
+
 Capture checklist for every screenshot:
 
 - Use production typography, icon, spacing, and one consistent production theme at 100% display scale.
@@ -95,6 +111,7 @@ Capture checklist for every screenshot:
 - Confirm text is legible at listing thumbnail size and passes contrast review.
 - Use the same time, status-bar treatment, dataset, and visual rhythm across the set.
 - Do not imply live threat intelligence, location tracking, contact access, team invitations, or automatic sync that the build does not provide.
+- The current 719 × 1278 captures meet Play's mandatory upload dimensions. For eligibility in large recommendation formats, recapture at least four portrait frames from the exact release candidate at 1080 × 1920 or higher; never upscale the existing images.
 
 ## Play Console declarations
 
@@ -124,7 +141,7 @@ Capture checklist for every screenshot:
 - [ ] Publish reviewed `/privacy.html`, `/terms.html`, and `/account-deletion.html` at durable HTTPS URLs.
 - [ ] Remove every `[RELEASE ...]`, `[PUBLISHER ...]`, and legal-review placeholder from public artifacts.
 - [ ] Confirm `VITE_QRY_CLOUD_API_URL` is absent and the release UI offers no account creation, cloud backup, or hosted redirect claim.
-- [ ] Configure a production AdMob app and banner unit, app-ads.txt if applicable, UMP messages, privacy options, and publisher verification. Never ship Google test IDs as production inventory.
+- [ ] Configure a production AdMob app and banner unit, publish and verify `app-ads.txt` at the root of the declared developer-website domain, publish the applicable UMP messages and privacy options, and complete publisher/app-readiness verification. Never ship Google test IDs as production inventory.
 - [ ] Confirm the launch AAB contains no RevenueCat/Play Billing SDK, billing permission, billing metadata, or active purchase surface.
 - [ ] Generate a signed Android App Bundle with a securely backed-up upload key and Play App Signing enabled.
 - [ ] Inspect the release AAB's merged manifest, SDK list, permissions, version code/name, target API, signing certificate, and network security behavior.
