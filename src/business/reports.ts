@@ -1,8 +1,10 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { TrackCollection } from '../track/store';
-import { operationsSummary } from './store';
+import { assertPdfTextSupported, pdfSafeText } from '../lib/pdf-text';
+import { operationsSummary, recordNeedsAttention } from './store';
 
 export async function generateOperationsReportPdf(collections: TrackCollection[]): Promise<Uint8Array> {
+  assertPdfTextSupported(collections.flatMap((collection) => [collection.name, ...collection.records.flatMap((record) => [record.name, record.code, record.location])]));
   const document = await PDFDocument.create();
   document.setTitle('QRY Operations Report');
   document.setAuthor('QRY Track');
@@ -14,16 +16,16 @@ export async function generateOperationsReportPdf(collections: TrackCollection[]
   let y = 595;
   for (const collection of collections) {
     if (y < 95) { page = addPage(document, bold, regular, summary, false); y = 720; }
-    const attention = collection.records.filter((record) => ['failed', 'needs_service', 'out_of_stock', 'checked_out'].includes(record.status) || Boolean(record.dueAt && record.dueAt < Date.now())).length;
-    page.drawText(fit(collection.name, bold, 12, 350), { x: 48, y, size: 12, font: bold, color: rgb(.09, .24, .20) });
+    const attention = collection.records.filter((record) => recordNeedsAttention(collection.template, record)).length;
+    page.drawText(fit(pdfSafeText(collection.name), bold, 12, 350), { x: 48, y, size: 12, font: bold, color: rgb(.09, .24, .20) });
     page.drawText(collection.template.replaceAll('_', ' ').toUpperCase(), { x: 410, y: y + 1, size: 7, font: bold, color: rgb(.82, .37, .18) });
     y -= 18;
     page.drawText(`${collection.records.length} records  |  ${attention} attention  |  ${collection.activity.length} activity events`, { x: 48, y, size: 8, font: regular, color: rgb(.39, .46, .42) });
     y -= 17;
     for (const record of collection.records.slice(0, 12)) {
       if (y < 72) break;
-      page.drawText(fit(`${record.code}  ${record.name}`, regular, 8, 335), { x: 58, y, size: 8, font: regular, color: rgb(.18, .25, .22) });
-      page.drawText(fit(record.status.replaceAll('_', ' '), regular, 8, 110), { x: 410, y, size: 8, font: regular, color: statusColor(record.status) });
+      page.drawText(fit(pdfSafeText(`${record.code}  ${record.name}`), regular, 8, 335), { x: 58, y, size: 8, font: regular, color: rgb(.18, .25, .22) });
+      page.drawText(fit(pdfSafeText(record.status.replaceAll('_', ' ')), regular, 8, 110), { x: 410, y, size: 8, font: regular, color: statusColor(record.status) });
       y -= 14;
     }
     if (collection.records.length > 12) { page.drawText(`+ ${collection.records.length - 12} more records in CSV export`, { x: 58, y, size: 7, font: regular, color: rgb(.45, .51, .48) }); y -= 14; }

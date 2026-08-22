@@ -1,4 +1,97 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.application'
+
+def googleTestAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
+def googleTestAdmobBannerId = "ca-app-pub-3940256099942544/9214589741"
+def googleTestAdmobPublisherPrefix = "ca-app-pub-3940256099942544"
+def admobAppId = System.getenv("QRY_ADMOB_APP_ID")?.trim()
+def admobBannerId = System.getenv("VITE_ADMOB_BANNER_ID")?.trim()
+def admobTestMode = System.getenv("VITE_ADMOB_TEST_MODE")?.trim()
+def cloudApiUrl = System.getenv("VITE_QRY_CLOUD_API_URL")?.trim()
+
+def releaseKeystorePath = System.getenv("QRY_UPLOAD_KEYSTORE")
+def releaseStorePassword = System.getenv("QRY_UPLOAD_STORE_PASSWORD")
+def releaseKeyAlias = System.getenv("QRY_UPLOAD_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("QRY_UPLOAD_KEY_PASSWORD")
+def releaseSigningReady = [releaseKeystorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it }
+
+def validateReleaseConfiguration = {
+    def releaseConfigurationErrors = []
+    def buildProfileFile = file("src/main/assets/public/qry-build-profile.json")
+
+    if (!releaseKeystorePath) releaseConfigurationErrors += "QRY_UPLOAD_KEYSTORE is required"
+    if (!releaseStorePassword) releaseConfigurationErrors += "QRY_UPLOAD_STORE_PASSWORD is required"
+    if (!releaseKeyAlias) releaseConfigurationErrors += "QRY_UPLOAD_KEY_ALIAS is required"
+    if (!releaseKeyPassword) releaseConfigurationErrors += "QRY_UPLOAD_KEY_PASSWORD is required"
+    if (releaseKeystorePath && !file(releaseKeystorePath).isFile()) {
+        releaseConfigurationErrors += "QRY_UPLOAD_KEYSTORE must point to an existing file"
+    }
+
+    if (!admobAppId) {
+        releaseConfigurationErrors += "QRY_ADMOB_APP_ID is required"
+    } else if (!(admobAppId ==~ /ca-app-pub-\d{16}~\d{10}/)) {
+        releaseConfigurationErrors += "QRY_ADMOB_APP_ID must be a valid AdMob app ID"
+    } else if (admobAppId.startsWith(googleTestAdmobPublisherPrefix)) {
+        releaseConfigurationErrors += "QRY_ADMOB_APP_ID must not use Google's test publisher ID"
+    }
+
+    if (!admobBannerId) {
+        releaseConfigurationErrors += "VITE_ADMOB_BANNER_ID is required"
+    } else if (!(admobBannerId ==~ /ca-app-pub-\d{16}\/\d{10}/)) {
+        releaseConfigurationErrors += "VITE_ADMOB_BANNER_ID must be a valid AdMob ad unit ID"
+    } else if (admobBannerId.startsWith(googleTestAdmobPublisherPrefix)) {
+        releaseConfigurationErrors += "VITE_ADMOB_BANNER_ID must not use Google's test publisher ID"
+    }
+
+    if (!"false".equalsIgnoreCase(admobTestMode)) {
+        releaseConfigurationErrors += "VITE_ADMOB_TEST_MODE must be explicitly set to false"
+    }
+    if (cloudApiUrl) {
+        releaseConfigurationErrors += "VITE_QRY_CLOUD_API_URL must be unset for the cloud-off v1 launch profile"
+    }
+    if (!buildProfileFile.isFile()) {
+        releaseConfigurationErrors += "synchronized qry-build-profile.json is required; run the Android sync before release"
+    } else {
+        try {
+            def buildProfile = new JsonSlurper().parse(buildProfileFile)
+            if (buildProfile.schemaVersion != 1) {
+                releaseConfigurationErrors += "the synchronized web build profile has an unsupported schema"
+            }
+            if (buildProfile.mode != "production") {
+                releaseConfigurationErrors += "the synchronized web assets were not built in production mode"
+            }
+            if (buildProfile.cloudEnabled != false) {
+                releaseConfigurationErrors += "the synchronized web build enables Cloud; v1 release must be cloud-off"
+            }
+            if (buildProfile.admobBannerConfigured != true) {
+                releaseConfigurationErrors += "the synchronized web build does not contain a production AdMob banner ID"
+            }
+            if (buildProfile.admobBannerId != admobBannerId) {
+                releaseConfigurationErrors += "the synchronized web build uses a different AdMob banner ID than VITE_ADMOB_BANNER_ID"
+            }
+            if (String.valueOf(buildProfile.admobBannerId).startsWith(googleTestAdmobPublisherPrefix)) {
+                releaseConfigurationErrors += "the synchronized web build contains Google's test AdMob publisher ID"
+            }
+            if (buildProfile.admobTestMode != false) {
+                releaseConfigurationErrors += "the synchronized web build still has AdMob test mode enabled"
+            }
+        } catch (Exception ignored) {
+            releaseConfigurationErrors += "qry-build-profile.json is invalid"
+        }
+    }
+
+    if (!releaseConfigurationErrors.isEmpty()) {
+        throw new GradleException("Release configuration is incomplete:\n - " + releaseConfigurationErrors.join("\n - "))
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def releaseArtifactRequested = graph.allTasks.any { task ->
+        task.project == project && task.name.toLowerCase() ==~ /.*(assemble|bundle|package|sign|publish).*release.*/
+    }
+    if (releaseArtifactRequested) validateReleaseConfiguration()
+}
 
 android {
     namespace = "com.royal.qrystudio"
@@ -10,23 +103,35 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders = [
+            admobAppId: admobAppId ?: googleTestAdmobAppId
+        ]
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigningReady) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                enableV1Signing false
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing true
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseSigningReady) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
-    }
-}
-
-repositories {
-    flatDir{
-        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
 }
 

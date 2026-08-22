@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('assembleDebug', 'bundleRelease')]
+  [ValidateSet('clean', 'verifyDebug', 'assembleDebug', 'assembleDebugAndroidTest', 'bundleRelease', 'lintDebug', 'testDebugUnitTest')]
   [string]$Task = 'assembleDebug'
 )
 
@@ -25,8 +25,13 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Capacitor sync failed with exit code $LASTEXITCODE." }
   Push-Location (Join-Path $projectRoot 'android')
   try {
-    & .\gradlew.bat $Task --stacktrace
-    if ($LASTEXITCODE -ne 0) { throw "Gradle $Task failed with exit code $LASTEXITCODE." }
+    $appTasks = @(if ($Task -eq 'verifyDebug') {
+      ':app:assembleDebug', ':app:lintDebug', ':app:testDebugUnitTest', ':app:assembleDebugAndroidTest'
+    } else {
+      ":app:$Task"
+    })
+    & .\gradlew.bat @appTasks --stacktrace
+    if ($LASTEXITCODE -ne 0) { throw "Gradle $($appTasks -join ', ') failed with exit code $LASTEXITCODE." }
   } finally {
     Pop-Location
   }

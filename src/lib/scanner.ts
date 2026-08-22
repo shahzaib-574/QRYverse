@@ -6,6 +6,7 @@ import { BarcodeFormat, BarcodeScanner } from '@capacitor-mlkit/barcode-scanning
 export type ScannerOutcome =
   | { status: 'success'; values: string[] }
   | { status: 'cancelled' }
+  | { status: 'permission-denied'; message: string }
   | { status: 'unavailable'; message: string };
 
 export async function scanWithDevice(): Promise<ScannerOutcome> {
@@ -24,7 +25,7 @@ export async function scanWithDevice(): Promise<ScannerOutcome> {
 
     const permission = await BarcodeScanner.requestPermissions();
     if (permission.camera !== 'granted' && permission.camera !== 'limited') {
-      return { status: 'unavailable', message: 'Camera access is required to scan a QR code.' };
+      return { status: 'permission-denied', message: 'Camera access is off. Allow it in Android settings to scan QR codes.' };
     }
 
     if (Capacitor.getPlatform() === 'android') {
@@ -44,6 +45,11 @@ export async function scanWithDevice(): Promise<ScannerOutcome> {
       message: error instanceof Error ? error.message : 'The scanner could not start.',
     };
   }
+}
+
+export async function openScannerSettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  await BarcodeScanner.openSettings();
 }
 
 export async function scanImageFromGallery(): Promise<ScannerOutcome> {

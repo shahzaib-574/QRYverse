@@ -13,6 +13,7 @@ import { useI18n } from '../i18n/LocaleProvider';
 import {
   applyImportedRecords,
   buildImportPreview,
+  limitImportedRecords,
   mergeBackup,
   parseBackup,
   parseCsv,
@@ -22,13 +23,14 @@ import {
   type ImportField,
 } from './import';
 import type { LabelTemplate, PageFormat } from './labels';
+import { maxLabelsPerPdf } from './limits';
 import type { TrackCollection } from './store';
 
 export function CsvImportSheet({ collection, recordLimit, onClose, onApply, onNotice }: {
   collection: TrackCollection;
   recordLimit: number;
   onClose: () => void;
-  onApply: (collection: TrackCollection) => void;
+  onApply: (collection: TrackCollection) => boolean;
   onNotice: (message: string) => void;
 }) {
   const { t } = useI18n();
@@ -38,7 +40,7 @@ export function CsvImportSheet({ collection, recordLimit, onClose, onApply, onNo
   const [error, setError] = useState('');
   const preview = useMemo(() => data ? buildImportPreview(collection, data, mapping, mode) : undefined, [collection, data, mapping, mode]);
   const remaining = Math.max(0, recordLimit - collection.records.length);
-  const accepted = preview ? preview.records.slice(0, remaining) : [];
+  const accepted = preview ? limitImportedRecords(collection, preview.records, recordLimit) : [];
   const overLimit = preview ? Math.max(0, preview.records.length - accepted.length) : 0;
 
   const chooseFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -62,7 +64,7 @@ export function CsvImportSheet({ collection, recordLimit, onClose, onApply, onNo
   });
   const apply = () => {
     if (!preview || accepted.length === 0) return;
-    onApply(applyImportedRecords(collection, { ...preview, records: accepted }));
+    if (!onApply(applyImportedRecords(collection, { ...preview, records: accepted }))) return;
     onNotice(`${accepted.length} record${accepted.length === 1 ? '' : 's'} imported`);
     onClose();
   };
@@ -75,8 +77,8 @@ export function CsvImportSheet({ collection, recordLimit, onClose, onApply, onNo
         <div className="mapping-grid">
           {(['name', 'code', 'location', 'quantity', 'notes'] as ImportField[]).map((field) => <label key={field}><span>{t(field[0].toUpperCase() + field.slice(1))}{field === 'name' ? ' *' : ''}</span><select value={mapping[field] ?? ''} onChange={(event) => setField(field, event.target.value)}><option value="">{t('Not imported')}</option>{data.headers.map((header, index) => <option value={index} key={`${header}-${index}`}>{header}</option>)}</select></label>)}
         </div>
-        <div className="duplicate-choice"><span>{t('When a code already exists')}</span><div><button className={mode === 'skip' ? 'active' : ''} onClick={() => setMode('skip')}>{t('Skip row')}</button><button className={mode === 'replace' ? 'active' : ''} onClick={() => setMode('replace')}>{t('Update record')}</button></div></div>
-        {preview && <div className="preview-box"><div><strong>{accepted.length} {t('ready')}</strong><span>{preview.skipped} {t('skipped')}{overLimit ? ` · ${overLimit} ${t('over plan limit')}` : ''}</span></div>{preview.errors.length > 0 && <ul>{preview.errors.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul>}</div>}
+        <div className="duplicate-choice"><span>{t('When a code already exists')}</span><div><button className={mode === 'skip' ? 'active' : ''} aria-pressed={mode === 'skip'} onClick={() => setMode('skip')}>{t('Skip row')}</button><button className={mode === 'replace' ? 'active' : ''} aria-pressed={mode === 'replace'} onClick={() => setMode('replace')}>{t('Update record')}</button></div></div>
+        {preview && <div className="preview-box"><div><strong>{accepted.length} {t('ready')}</strong><span>{preview.skipped} {t('skipped')}{overLimit ? ` · ${overLimit} ${t('over workspace limit')}` : ''}</span></div>{preview.errors.length > 0 && <ul>{preview.errors.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul>}</div>}
       </>}
       {error && <p className="deployment-error">{error}</p>}
       <button className="solid-button full" disabled={!preview || accepted.length === 0} onClick={apply}>{t('Import records')}{accepted.length ? ` (${accepted.length})` : ''} <ChevronRight /></button>
@@ -87,7 +89,7 @@ export function CsvImportSheet({ collection, recordLimit, onClose, onApply, onNo
 export function RestoreSheet({ local, onClose, onApply, onNotice }: {
   local: TrackCollection[];
   onClose: () => void;
-  onApply: (collections: TrackCollection[]) => void;
+  onApply: (collections: TrackCollection[]) => boolean;
   onNotice: (message: string) => void;
 }) {
   const { t } = useI18n();
@@ -108,9 +110,14 @@ export function RestoreSheet({ local, onClose, onApply, onNotice }: {
   };
   const restore = () => {
     if (!preview) return;
-    onApply(mode === 'merge' ? mergeBackup(local, preview.collections) : preview.collections);
-    onNotice(`${preview.recordCount} records restored`);
-    onClose();
+    if (mode === 'replace' && !window.confirm('Replace every local QRYverse workspace with this backup? This cannot be undone unless you exported another backup.')) return;
+    try {
+      if (!onApply(mode === 'merge' ? mergeBackup(local, preview.collections) : preview.collections)) return;
+      onNotice(`${preview.recordCount} records restored`);
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The backup could not be merged.');
+    }
   };
   return (
     <Sheet label={t('Restore a backup')} onClose={onClose} className="deployment-sheet">
@@ -118,8 +125,8 @@ export function RestoreSheet({ local, onClose, onApply, onNotice }: {
       {!preview ? <FileDrop accept=".json,application/json" icon={<FileJson />} title={t('Choose a QRY JSON backup')} detail={t('The file is validated before restore')} browseLabel={t('Browse files')} onChange={chooseFile} /> : <>
         <div className="restore-summary"><Check /><span><strong>{preview.collections.length} {t('workspaces')}</strong><small>{preview.recordCount} {t('records')} · {preview.warnings.length ? `${preview.warnings.length} ${t('warnings')}` : t('Validation passed')}</small></span></div>
         <div className="restore-options">
-          <button className={mode === 'merge' ? 'active' : ''} onClick={() => setMode('merge')}><strong>{t('Merge safely')}</strong><small>{t('Keep local data and update matching IDs')}</small></button>
-          <button className={mode === 'replace' ? 'active danger' : ''} onClick={() => setMode('replace')}><strong>{t('Replace this device')}</strong><small>{t('Use only the workspaces in this backup')}</small></button>
+          <button className={mode === 'merge' ? 'active' : ''} aria-pressed={mode === 'merge'} onClick={() => setMode('merge')}><strong>{t('Merge safely')}</strong><small>{t('Keep local data and update matching IDs')}</small></button>
+          <button className={mode === 'replace' ? 'active danger' : ''} aria-pressed={mode === 'replace'} onClick={() => setMode('replace')}><strong>{t('Replace this device')}</strong><small>{t('Use only the workspaces in this backup')}</small></button>
         </div>
       </>}
       {error && <p className="deployment-error">{error}</p>}
@@ -136,10 +143,17 @@ export function LabelStudioSheet({ collection, onClose, onNotice }: {
   const { t } = useI18n();
   const [pageFormat, setPageFormat] = useState<PageFormat>('a4');
   const [template, setTemplate] = useState<LabelTemplate>('standard');
-  const [selected, setSelected] = useState(() => new Set(collection.records.map((record) => record.id)));
+  const [batchIndex, setBatchIndex] = useState(0);
+  const batches = Math.max(1, Math.ceil(collection.records.length / maxLabelsPerPdf));
+  const visibleRecords = collection.records.slice(batchIndex * maxLabelsPerPdf, (batchIndex + 1) * maxLabelsPerPdf);
+  const [selected, setSelected] = useState(() => new Set(collection.records.slice(0, maxLabelsPerPdf).map((record) => record.id)));
   const [busy, setBusy] = useState(false);
   const counts: Record<LabelTemplate, number> = { compact: 24, standard: 10, large: 6 };
-  const toggle = (id: string) => setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const toggle = (id: string) => setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else if (next.size < maxLabelsPerPdf) next.add(id); return next; });
+  const chooseBatch = (index: number) => {
+    setBatchIndex(index);
+    setSelected(new Set(collection.records.slice(index * maxLabelsPerPdf, (index + 1) * maxLabelsPerPdf).map((record) => record.id)));
+  };
   const generate = async () => {
     setBusy(true);
     try {
@@ -159,10 +173,11 @@ export function LabelStudioSheet({ collection, onClose, onNotice }: {
       <div className="label-config">
         <label><span>{t('Paper')}</span><select value={pageFormat} onChange={(event) => setPageFormat(event.target.value as PageFormat)}><option value="a4">A4</option><option value="letter">US Letter</option></select></label>
         <label><span>{t('Label size')}</span><select value={template} onChange={(event) => setTemplate(event.target.value as LabelTemplate)}><option value="compact">{t('Compact')} · 24/{t('per page')}</option><option value="standard">{t('Standard')} · 10/{t('per page')}</option><option value="large">{t('Large')} · 6/{t('per page')}</option></select></label>
+        {batches > 1 && <label><span>Record batch</span><select value={batchIndex} onChange={(event) => chooseBatch(Number(event.target.value))}>{Array.from({ length: batches }, (_, index) => <option key={index} value={index}>{index * maxLabelsPerPdf + 1}–{Math.min((index + 1) * maxLabelsPerPdf, collection.records.length)}</option>)}</select></label>}
       </div>
-      <p className="label-print-note">{t('Print at 100% or Actual size for accurate label spacing.')}</p>
-      <div className="label-count"><Printer /><span><strong>{selected.size} {t('labels selected')}</strong><small>{Math.ceil(selected.size / counts[template]) || 0} {t('PDF pages')}</small></span><button onClick={() => setSelected(selected.size === collection.records.length ? new Set() : new Set(collection.records.map((record) => record.id)))}>{selected.size === collection.records.length ? t('Clear') : t('All')}</button></div>
-      <div className="label-records">{collection.records.map((record) => <label key={record.id}><input type="checkbox" checked={selected.has(record.id)} onChange={() => toggle(record.id)} /><i>{selected.has(record.id) && <Check />}</i><span><strong>{record.name}</strong><small>{record.code}{record.location ? ` · ${record.location}` : ''}</small></span></label>)}</div>
+      <p className="label-print-note">{t('Print at 100% or Actual size for accurate label spacing.')} PDFs are safely batched at {maxLabelsPerPdf} labels and currently support Latin-script text; use JSON for other scripts.</p>
+      <div className="label-count"><Printer /><span><strong>{selected.size} {t('labels selected')}</strong><small>{Math.ceil(selected.size / counts[template]) || 0} {t('PDF pages')}</small></span><button onClick={() => setSelected(selected.size === visibleRecords.length ? new Set() : new Set(visibleRecords.map((record) => record.id)))}>{selected.size === visibleRecords.length ? t('Clear') : t('All')}</button></div>
+      <div className="label-records">{visibleRecords.map((record) => <label key={record.id}><input type="checkbox" checked={selected.has(record.id)} onChange={() => toggle(record.id)} /><i>{selected.has(record.id) && <Check />}</i><span><strong>{record.name}</strong><small>{record.code}{record.location ? ` · ${record.location}` : ''}</small></span></label>)}</div>
       <button className="solid-button full" disabled={!selected.size || busy} onClick={generate}>{t(busy ? 'Building PDF…' : 'Create label PDF')} <Printer /></button>
     </Sheet>
   );

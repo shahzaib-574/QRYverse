@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f4f7f2" />
+  <meta name="robots" content="index,follow" />
+  <title>Privacy Policy · QRYverse</title>
+  <meta name="description" content="How QRYverse v1 handles on-device QR scans, local records, user-directed transfers, and advertising." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/legal.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">QRY</span><span>QRYverse</span></a>
+      <nav aria-label="Legal pages">
+        <a href="/privacy.html" aria-current="page">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/account-deletion.html">Delete local data</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <p class="eyebrow">Privacy, in plain language</p>
+    <h1>Your scans belong to you.</h1>
+    <p class="lede">QRYverse v1 is local-first and cloud-off. QR values, history, Track workspaces, and local campaigns stay on your device unless you deliberately share, export, open a destination, or test an endpoint you entered.</p>
+    <p class="meta">Effective date: August 22, 2026 · Version 1.0 draft</p>
+
+    <aside class="notice" role="note">
+      <strong>Release owner action required</strong>
+      Replace <span class="placeholder">[RELEASE CONTACT EMAIL — REQUIRED]</span>, publish this policy at a stable HTTPS URL, and complete a legal review before production submission. The first Play binary creates no account and has no QRYverse Cloud connection; cloud paragraphs below describe a future service and do not apply until a separately disclosed release enables it.
+    </aside>
+
+    <section class="card" aria-labelledby="scope">
+      <h2 id="scope">1. Scope and controller</h2>
+      <p>This policy describes the QRYverse v1 Android app and its web experience. It does not cover a future QRYverse Cloud service, which would require an updated policy before becoming available. The production publisher identified in the Google Play listing is responsible for this service.</p>
+      <p>Privacy questions: <span class="placeholder">[RELEASE CONTACT EMAIL — REQUIRED]</span></p>
+
+      <h2>2. Information handled by QRYverse</h2>
+      <h3>Information kept on your device</h3>
+      <ul>
+        <li>QR values you scan, plus links, text, Wi-Fi details, and vCard contact fields you choose to encode. Scanned codes can also contain email, phone, SMS, or location values.</li>
+        <li>Your saved scan history, favorites, app preferences, and a randomly generated local device identifier.</li>
+        <li>Track workspaces, records, activity history, notes, contacts, evidence photos, assignees, due dates, and other fields you choose to enter.</li>
+        <li>Business workspace settings, staged team-member details, integration endpoints, campaign destinations, and locally counted campaign scans.</li>
+        <li>A small, scrubbed diagnostic history. QRYverse is designed to remove URLs, email addresses, phone-like values, scan payloads, and Track records from these diagnostic messages.</li>
+      </ul>
+      <p>Camera and gallery images used for QR recognition are processed on the device. QRYverse does not add scanner images to your library. Evidence photos you deliberately attach to a Track record remain part of that record.</p>
+
+      <h3>Future account and cloud information — not enabled in v1</h3>
+      <p>The first Play release offers no account creation or QRYverse Cloud connection. If a future build enables Cloud, its updated policy will explain collection of account, organization, session, backup, and hosted-campaign data before that feature becomes available.</p>
+      <p>If enabled later, the current development foundation would receive a name, email address, organization name, and password and store a salted password hash, hashed session tokens, membership/role information, and session expiry times.</p>
+      <p>The development cloud backup is manual, but it is not reachable from the v1 release. Production activation requires a new privacy and Data safety review.</p>
+
+      <h3>Future hosted campaigns — not enabled in v1</h3>
+      <p>V1 campaigns are app-routed and local. Public hosted redirects and server-side aggregate scan counts require a future production service and updated disclosure.</p>
+
+      <h3>Advertising and consent</h3>
+      <p>The free Android build may show Google AdMob banner ads. Google Mobile Ads and its consent tools may process device or account identifiers, IP-derived general location, ad interactions, and diagnostic information for advertising, measurement, fraud prevention, security, and compliance. Where required, the app presents Google's consent message before requesting ads and provides access to privacy choices. Development builds use Google's test ad units.</p>
+      <p>Learn more in <a href="https://policies.google.com/privacy">Google's Privacy Policy</a> and <a href="https://support.google.com/admob/answer/6128543">AdMob's privacy guidance</a>.</p>
+
+      <h3>Purchases</h3>
+      <p>The first ad-supported Android release does not include a purchase SDK, offer subscriptions, or transmit purchase and entitlement data. This policy must be updated before a future release enables paid plans.</p>
+
+      <h2>3. When information leaves your device</h2>
+      <p>QRYverse transmits information only for a feature you activate or for a configured third-party service:</p>
+      <ul>
+        <li>when the Android build requests an ad after the applicable privacy flow;</li>
+        <li>when you explicitly send a webhook test to an endpoint you entered; or</li>
+        <li>when you use the system share sheet or export a file to a destination you select.</li>
+      </ul>
+      <p>QRYverse does not request access to your address book or device location. Recognizing a contact card or geographic coordinate inside a QR code does not grant that permission.</p>
+
+      <h2>4. Purposes and legal bases</h2>
+      <p>Information is used to provide local scanner, library, Track, campaign, support, security, and advertising-supported access. Depending on where you live, processing may rely on performing a contract, legitimate interests in operating and protecting the app, legal obligations, or consent. You may withdraw advertising consent through the app's privacy options where available.</p>
+
+      <h2>5. Retention and security</h2>
+      <ul>
+        <li>Local data remains until you delete it, clear the app's storage, or uninstall the app. Exported copies are controlled by their destination.</li>
+      </ul>
+      <p>No system is perfectly secure; protect your device and avoid placing unnecessary secrets in QR values or notes. Any future cloud release requires separate transport, storage, retention, and provider disclosures.</p>
+
+      <h2>6. Your choices and rights</h2>
+      <p>You can choose whether scans are saved automatically, delete local items, records, workspaces, campaigns, and diagnostics, export Track data, revoke camera access in Android settings, manage ad privacy choices when offered, or clear all app storage in Android settings.</p>
+      <p>Depending on your jurisdiction, you may have rights to access, correct, export, object to or restrict processing, withdraw consent, and delete personal information. See <a href="/account-deletion.html">Delete your local QRYverse data</a> for the current procedure.</p>
+
+      <h2>7. Children</h2>
+      <p>QRYverse v1 is intended only for adults ages 18 and older and is not designed or directed to children. The publisher must confirm the matching Google Play and AdMob console declarations before release. Because the app has no age gate and does not know a user's age, the SDK child-directed and under-age-of-consent request tags remain unspecified. Do not use the app to record information about children unless you have the authority and safeguards required by law.</p>
+
+      <h2>8. International processing and service providers</h2>
+      <p>Google and any production support provider may process information in countries other than yours. The production publisher must list its actual support providers here before release and ensure appropriate contractual safeguards are in place.</p>
+
+      <h2>9. Changes</h2>
+      <p>Material changes will be reflected by a revised effective date and, where required, an in-app notice or renewed consent. Previous versions should remain available from the production policy URL.</p>
+
+      <h2>10. Contact</h2>
+      <p>Privacy and data-rights contact: <span class="placeholder">[RELEASE CONTACT EMAIL — REQUIRED]</span></p>
+      <p>Publisher legal name and address: <span class="placeholder">[PUBLISHER LEGAL NAME AND POSTAL ADDRESS — REQUIRED]</span></p>
+    </section>
+  </main>
+
+  <footer class="site-footer"><div class="footer-inner"><p>QRYverse · Local-first QR scanning and operations.</p></div></footer>
+</body>
+</html>

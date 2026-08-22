@@ -50,8 +50,7 @@ export function analysePayload(raw: string): ScanAnalysis {
       kind: 'wifi',
       title: ssid || 'Wi-Fi network',
       displayValue: ssid ? `Join ${ssid}` : 'Wi-Fi credentials',
-      actionLabel: 'Open Wi-Fi settings',
-      actionHref: 'intent:#Intent;action=android.settings.WIFI_SETTINGS;end',
+      actionLabel: 'Copy Wi-Fi details',
       risk: 'caution',
       riskTitle: 'Check the network name',
       riskReasons: ['Only join networks you recognize.'],
@@ -66,7 +65,6 @@ export function analysePayload(raw: string): ScanAnalysis {
       title: name || 'New contact',
       displayValue: 'Contact card',
       actionLabel: 'Save contact',
-      actionHref: `data:text/vcard;charset=utf-8,${encodeURIComponent(value)}`,
       risk: 'clear',
       riskTitle: 'Contact card detected',
       riskReasons: ['Review the details before saving.'],
@@ -136,7 +134,8 @@ function analyseUrl(url: URL): ScanAnalysis {
     risk = 'danger';
     reasons.push('The address contains language commonly used in deceptive links.');
   }
-  if (reasons.length === 0) reasons.push('No obvious warning signs found by on-device checks.');
+  if (reasons.length === 0) reasons.push('No suspicious formatting was detected by the on-device check.');
+  reasons.push('QRYverse does not check site reputation or scan destinations for malware.');
 
   return {
     kind: 'link',
@@ -149,7 +148,7 @@ function analyseUrl(url: URL): ScanAnalysis {
     riskTitle:
       risk === 'danger' ? 'High-risk pattern detected' :
       risk === 'caution' ? 'Take a closer look' :
-      'Looks clear',
+      'No obvious format warnings',
     riskReasons: reasons,
   };
 }
@@ -178,32 +177,75 @@ export function labelForKind(kind: ScanKind): string {
   } satisfies Record<ScanKind, string>)[kind];
 }
 
+export function contactPayloadToVcard(value: string): string {
+  const trimmed = value.trim();
+  if (/^BEGIN:VCARD/i.test(trimmed)) return trimmed.replace(/\r?\n/g, '\r\n');
+  if (!/^MECARD:/i.test(trimmed)) return '';
+  const fields: Record<string, string> = {};
+  for (const part of splitEscaped(trimmed.slice(7), ';')) {
+    const separator = part.indexOf(':');
+    if (separator < 1) continue;
+    const key = part.slice(0, separator).toUpperCase();
+    const content = part.slice(separator + 1).replace(/\\([;,:\\])/g, '$1').trim();
+    if (key === 'N') fields.name = content.replace(/\s*,\s*/g, ' ').trim();
+    if (key === 'TEL' && !fields.phone) fields.phone = content;
+    if (key === 'EMAIL' && !fields.email) fields.email = content;
+    if (key === 'ORG') fields.company = content;
+  }
+  return createPayload('contact', fields);
+}
+
 export type CreateMode = 'link' | 'wifi' | 'text' | 'contact';
 
 export function createPayload(
   mode: CreateMode,
   fields: Record<string, string>,
 ): string {
-  if (mode === 'link') return normaliseWebsite(fields.url ?? '');
+  if (mode === 'link') return normaliseHttpUrl(fields.url ?? '');
   if (mode === 'text') return fields.text?.trim() ?? '';
   if (mode === 'wifi') {
     const escape = (part: string) => part.replace(/([\\;,:])/g, '\\$1');
+    if (!fields.ssid?.trim()) return '';
     const security = fields.security || 'WPA';
-    return `WIFI:T:${security};S:${escape(fields.ssid ?? '')};P:${escape(fields.password ?? '')};H:${fields.hidden === 'true'};;`;
+    return `WIFI:T:${security};S:${escape(fields.ssid.trim())};P:${escape(fields.password ?? '')};H:${fields.hidden === 'true'};;`;
   }
+  const contactValues = [fields.name, fields.phone, fields.email, fields.company].map((value) => value?.trim() ?? '');
+  if (!contactValues.some(Boolean)) return '';
+  const escapeVcard = (part: string) => part.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
   return [
     'BEGIN:VCARD',
     'VERSION:3.0',
-    `FN:${fields.name?.trim() ?? ''}`,
-    fields.phone ? `TEL:${fields.phone.trim()}` : '',
-    fields.email ? `EMAIL:${fields.email.trim()}` : '',
-    fields.company ? `ORG:${fields.company.trim()}` : '',
+    `FN:${escapeVcard(contactValues[0] || contactValues[1] || contactValues[2] || 'Contact')}`,
+    contactValues[1] ? `TEL:${escapeVcard(contactValues[1])}` : '',
+    contactValues[2] ? `EMAIL:${escapeVcard(contactValues[2])}` : '',
+    contactValues[3] ? `ORG:${escapeVcard(contactValues[3])}` : '',
     'END:VCARD',
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\r\n');
 }
 
-function normaliseWebsite(value: string): string {
+export function normaliseHttpUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return '';
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) return '';
+    return parsed.href;
+  } catch {
+    return '';
+  }
+}
+
+function splitEscaped(value: string, delimiter: string): string[] {
+  const parts: string[] = [];
+  let part = '';
+  let escaped = false;
+  for (const character of value) {
+    if (escaped) { part += `\\${character}`; escaped = false; }
+    else if (character === '\\') escaped = true;
+    else if (character === delimiter) { parts.push(part); part = ''; }
+    else part += character;
+  }
+  if (escaped) part += '\\';
+  parts.push(part);
+  return parts;
 }

@@ -1,6 +1,6 @@
 # QRYverse
 
-QRYverse is the public home of QRY, a local-first QR companion for Android and the web. The product combines safe scanning, clear result previews, static QR generation, an organized personal library, and business workflows. Monetization is centered on QRY Studio: dynamic redirects, analytics, teams, branding, and custom domains.
+QRYverse is the public home of QRY, a local-first QR companion for Android and the web. It combines safe scanning, clear result previews, static QR generation, an organized personal library, and local business workflows. The Play v1 launch is ad-supported; hosted redirects, cloud accounts, billing, enforced teams, branding plans, and custom domains remain future roadmap options.
 
 ## Included in this MVP
 
@@ -23,11 +23,14 @@ QRYverse is the public home of QRY, a local-first QR companion for Android and t
 - Validated JSON backup restore with safe merge or explicit replacement
 - Business operations center with alerts, automation rules, team-role staging, portfolio CSV, and branded PDF reports
 - Local dynamic campaigns with editable destinations, pause/resume, QR export, and privacy-conscious scan counts
-- Android app links for opening Track records and dynamic campaigns from external scanners
-- English and Urdu UI with persistent RTL switching
+- Android custom-scheme deep links for opening Track records and local campaigns
+- English-first UI; Urdu/RTL translation groundwork is deferred until the full surface is translated and device-tested
 - Local crash recovery and privacy-scrubbed diagnostic export
-- RevenueCat/Google Play subscription adapter gated by environment configuration
-- Explicit local-only sync adapter ready for a future authenticated backend
+- Ad-supported launch boundary with no purchase surface or billing SDK bundled
+- AdMob adaptive-banner integration with UMP consent and test-ID-safe defaults
+- Development-only cloud foundation for authenticated backup and hosted redirects; deliberately disabled in the v1 Play profile
+- Modern responsive soft-neumorphic UI with light/dark/system themes and accessible navigation
+- Google Play listing copy, data-safety worksheet, legal-page drafts, icon, feature graphic, and eight native phone screenshots
 
 ## Run locally
 
@@ -35,6 +38,14 @@ QRYverse is the public home of QRY, a local-first QR companion for Android and t
 npm install
 npm run dev
 ```
+
+To exercise accounts, explicit cross-device backup, and hosted dynamic redirects, start the optional local cloud service in another terminal:
+
+```powershell
+npm run server:start
+```
+
+The browser client defaults to `http://127.0.0.1:8787`. Server data is stored in ignored `data/qryverse.sqlite`. See [CLOUD_BACKEND.md](./CLOUD_BACKEND.md) before exposing the service beyond local development.
 
 ## Verify
 
@@ -54,35 +65,40 @@ npm run android:debug
 On a machine without a global JDK/Android SDK, the checksum-verified workspace-local JDK 21 and API 36 toolchain can be used with:
 
 ```powershell
-npm run android:local-debug
+npm run android:local-clean
+npm run android:local-verify
 ```
 
-The installable debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. See [ANDROID_RELEASE_CHECKLIST.md](./ANDROID_RELEASE_CHECKLIST.md) for artifact verification, device testing, signing, and Play rollout steps.
+The verification command builds the installable debug APK, runs Android lint and JVM release-contract tests, and compiles the on-device contract test APK. Outputs are written under `android/app/build/outputs/apk/`. See [ANDROID_RELEASE_CHECKLIST.md](./ANDROID_RELEASE_CHECKLIST.md) for artifact verification, device testing, signing, and Play rollout steps.
 
 Use `npm run android:local-bundle` only after release signing and Play configuration are ready.
 
 The Android project requests camera access only when the user starts a scan.
 
+Advertising uses AdMob rather than website AdSense. Development stays on Google's official test inventory until production IDs and an explicit `VITE_ADMOB_TEST_MODE=false` are supplied. See [ADMOB_RELEASE_SETUP.md](./ADMOB_RELEASE_SETUP.md).
+
+The visual and interaction rationale is documented in [UI_UX_DECISIONS.md](./UI_UX_DECISIONS.md). Play listing copy and data disclosures are in [GOOGLE_PLAY_LISTING.md](./GOOGLE_PLAY_LISTING.md) and [PLAY_DATA_SAFETY.md](./PLAY_DATA_SAFETY.md).
+
 ## Product boundary
 
 The current safety indicator performs explainable on-device heuristics. It does not claim live malware or reputation checking. A future production service can add an opt-in URL reputation API without silently uploading every scan.
 
-## QRY Track limits
+## QRY Track storage boundary
 
-The beta presents a free allowance of one workspace and 25 records. Data remains fully local and exportable. Paid enforcement is intentionally deferred until Play Billing is configured; the intended upgrade value is higher record limits, additional workspaces, team sync, permissions, and vertical workflow packs.
+The ad-supported v1 build does not apply a paid workspace or record quota. Data remains local and exportable. Track persistence is committed before UI success and is size-guarded at 3 MiB so a WebView quota failure cannot silently discard a change; evidence actions keep the sheet open and let the user remove a pending photo before retrying.
 
-Bulk import accepts a header-based CSV and previews validation, duplicates, and plan limits before applying changes. Label Studio creates generic print sheets; select Actual size or 100% in the print dialog. JSON restore validates the backup before offering a non-destructive merge or an explicit local replacement.
+Bulk import accepts a header-based CSV and previews validation and duplicates before applying changes. Label Studio creates generic print sheets; select Actual size or 100% in the print dialog. JSON restore validates the backup before offering a non-destructive merge or an explicit local replacement.
 
-## Live billing configuration
+## Deferred billing boundary
 
-The application includes a real RevenueCat adapter, offering retrieval, entitlement checks, purchases, and restore flow. It remains unable to initiate transactions until a public Android SDK key is supplied. See [PLAY_BILLING_SETUP.md](./PLAY_BILLING_SETUP.md).
+The first Google Play release is ad-supported and deliberately does not bundle RevenueCat, Google Play Billing, a purchase surface, or a billing permission. `src/lib/billing.ts` remains an inert adapter boundary for a separately reviewed future release.
 
-Only the public app-specific SDK key belongs in `VITE_REVENUECAT_ANDROID_API_KEY`. Secret RevenueCat or Google credentials must never be included in the app bundle.
+If paid plans are introduced later, treat that as a separately tested release. [PLAY_BILLING_SETUP.md](./PLAY_BILLING_SETUP.md) records the opt-in steps and the data-safety, policy, entitlement, restore, cancellation, and expiry gates that must be completed first.
 
 ## Diagnostics and sync
 
 Up to 20 diagnostic events are held locally. Messages are scrubbed for URLs, email addresses, and phone-like numbers, and never include scan payloads or Track records by design. Users can export or erase these events from Studio.
 
-`LocalOnlySyncAdapter` makes the offline boundary explicit. No remote writes occur until an authenticated backend, access rules, conflict policy, and deletion workflow have been selected and reviewed.
+`LocalOnlySyncAdapter` keeps offline mode explicit. The first Play profile leaves `VITE_QRY_CLOUD_API_URL` unset, so no account or QRYverse server connection is available. The optional `RemoteSyncAdapter` and tenant-isolated server remain development foundations until the production controls in `CLOUD_BACKEND.md` are complete.
 
-Webhook, sync API, and custom-domain endpoints can be staged in the app. QRY performs no hidden network calls: the webhook is contacted only through its explicit test action, while authenticated sync, public redirects, email delivery, and DNS activation remain deployment responsibilities.
+Webhook and custom-domain values can be staged locally. QRY contacts a webhook only through the explicit test action. Cloud activation, email delivery, custom-domain verification, and DNS are post-launch deployment work, not claims of the v1 Play binary. See [PLAY_LAUNCH_PROFILE.md](./PLAY_LAUNCH_PROFILE.md).

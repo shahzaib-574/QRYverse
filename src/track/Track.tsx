@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   TriangleAlert,
   Tags,
+  Trash2,
   UserCheck,
   Users,
   Wrench,
@@ -35,29 +36,31 @@ import {
   applyTrackAction,
   collectionCsv,
   makeTrackId,
+  maxTrackRecordsPerWorkspace,
+  maxTrackWorkspaces,
   nextRecordCode,
   templateInfo,
   trackPayload,
   type TrackAction,
   type TrackCollection,
+  type TrackCollectionsChange,
   type TrackRecord,
   type TrackTemplate,
 } from './store';
 import './track.css';
 import { CsvImportSheet, LabelStudioSheet, RestoreSheet } from './DeploymentSheets';
 import { AlertsSheet, AutomationsSheet, ReportsSheet, TeamSheet } from '../business/BusinessSheets';
-import { deriveAlerts, initialStatus, type BusinessState } from '../business/store';
+import { deriveAlerts, initialStatus, recordNeedsAttention, type BusinessState, type BusinessStateChange } from '../business/store';
 import '../business/business.css';
 
-export function Track({ collections, onCollections, target, onTargetHandled, onNotice, pro, business, onBusiness }: {
+export function Track({ collections, onCollections, target, onTargetHandled, onNotice, business, onBusiness }: {
   collections: TrackCollection[];
-  onCollections: (collections: TrackCollection[]) => void;
+  onCollections: (collections: TrackCollectionsChange) => boolean;
   target?: { collectionId: string; recordId: string };
   onTargetHandled: () => void;
   onNotice: (message: string) => void;
-  pro: boolean;
   business: BusinessState;
-  onBusiness: (state: BusinessState) => void;
+  onBusiness: (state: BusinessStateChange) => boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string>();
   const [newWorkspace, setNewWorkspace] = useState(false);
@@ -86,9 +89,17 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
     onTargetHandled();
   }, [target, collections, onNotice, onTargetHandled]);
 
-  const updateCollection = (updated: TrackCollection) => {
-    onCollections(collections.map((item) => item.id === updated.id ? updated : item));
-  };
+  const replaceCollection = (updated: TrackCollection): boolean => onCollections((current) => current.map((item) => item.id === updated.id ? updated : item));
+  const updateCollection = (id: string, change: (current: TrackCollection) => TrackCollection): boolean => onCollections((current) => {
+    let changed = false;
+    const next = current.map((item) => {
+      if (item.id !== id) return item;
+      const updated = change(item);
+      if (updated !== item) changed = true;
+      return updated;
+    });
+    return changed ? next : current;
+  });
 
   return (
     <div className="screen track-screen">
@@ -96,12 +107,8 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
         <TrackOverview
           collections={collections}
           onOpen={setSelectedId}
-          onNew={() => {
-            if (!pro && collections.length >= 1) onNotice('Track Pro unlocks additional workspaces');
-            else setNewWorkspace(true);
-          }}
+          onNew={() => { if (collections.length < maxTrackWorkspaces) setNewWorkspace(true); }}
           onRestore={() => setRestoreOpen(true)}
-          pro={pro}
           alertCount={deriveAlerts(collections, business).length}
           onReports={() => setReportsOpen(true)}
           onTeam={() => setTeamOpen(true)}
@@ -117,7 +124,13 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
           onNotice={onNotice}
           onImport={() => setImportOpen(true)}
           onLabels={() => setLabelsOpen(true)}
-          recordLimit={pro ? 1000 : 25}
+          onDelete={() => {
+            if (!window.confirm(`Delete “${selected.name}” and all ${selected.records.length} records? Export a backup first if you may need them.`)) return;
+            if (!onCollections((current) => current.filter((item) => item.id !== selected.id))) return;
+            setSelectedId(undefined);
+            onNotice('Workspace deleted');
+          }}
+          recordLimit={maxTrackRecordsPerWorkspace}
         />
       )}
 
@@ -125,7 +138,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
         <WorkspaceSheet
           onClose={() => setNewWorkspace(false)}
           onCreate={(collection) => {
-            onCollections([collection, ...collections]);
+            if (!onCollections((current) => [collection, ...current])) return;
             setSelectedId(collection.id);
             setNewWorkspace(false);
             onNotice('Workspace created');
@@ -133,7 +146,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
         />
       )}
       {restoreOpen && <RestoreSheet local={collections} onClose={() => setRestoreOpen(false)} onApply={onCollections} onNotice={onNotice} />}
-      {importOpen && selected && <CsvImportSheet collection={selected} recordLimit={pro ? 1000 : 25} onClose={() => setImportOpen(false)} onApply={updateCollection} onNotice={onNotice} />}
+      {importOpen && selected && <CsvImportSheet collection={selected} recordLimit={maxTrackRecordsPerWorkspace} onClose={() => setImportOpen(false)} onApply={replaceCollection} onNotice={onNotice} />}
       {labelsOpen && selected && <LabelStudioSheet collection={selected} onClose={() => setLabelsOpen(false)} onNotice={onNotice} />}
       {reportsOpen && <ReportsSheet collections={collections} onClose={() => setReportsOpen(false)} onNotice={onNotice} />}
       {teamOpen && <TeamSheet state={business} onState={onBusiness} onClose={() => setTeamOpen(false)} onNotice={onNotice} />}
@@ -144,7 +157,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
           collection={selected}
           onClose={() => setNewRecord(false)}
           onCreate={(record) => {
-            updateCollection({ ...selected, records: [record, ...selected.records] });
+            if (!updateCollection(selected.id, (current) => ({ ...current, records: [record, ...current.records] }))) return;
             setNewRecord(false);
             setRecordTarget({ collectionId: selected.id, recordId: record.id });
             onNotice('Record and QR code created');
@@ -160,13 +173,25 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
             collection={collection}
             record={record}
             onClose={() => setRecordTarget(undefined)}
+            onDelete={() => {
+              if (!window.confirm(`Delete “${record.name}” and its activity/evidence history? This cannot be undone.`)) return;
+              if (!updateCollection(collection.id, (current) => ({
+                ...current,
+                records: current.records.filter((item) => item.id !== record.id),
+                activity: current.activity.filter((item) => item.recordId !== record.id),
+              }))) return;
+              setRecordTarget(undefined);
+              onNotice('Record deleted');
+            }}
             onAction={(action, evidence) => {
-              const outcome = applyTrackAction(collection, record.id, action, evidence);
-              if (outcome.duplicate) onNotice('Duplicate scan: this attendance state is already recorded');
-              else {
-                updateCollection(outcome.collection);
-                onNotice('Record updated');
-              }
+              let duplicate = false;
+              const saved = updateCollection(collection.id, (current) => {
+                const outcome = applyTrackAction(current, record.id, action, evidence);
+                duplicate = outcome.duplicate;
+                return outcome.duplicate ? current : outcome.collection;
+              });
+              if (duplicate) onNotice('Duplicate scan: this attendance state is already recorded');
+              else if (saved) onNotice('Record updated');
             }}
           />
         );
@@ -175,7 +200,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
   );
 }
 
-function TrackOverview({ collections, onOpen, onNew, onRestore, pro, alertCount, onReports, onTeam, onAutomations, onAlerts }: { collections: TrackCollection[]; onOpen: (id: string) => void; onNew: () => void; onRestore: () => void; pro: boolean; alertCount: number; onReports: () => void; onTeam: () => void; onAutomations: () => void; onAlerts: () => void }) {
+function TrackOverview({ collections, onOpen, onNew, onRestore, alertCount, onReports, onTeam, onAutomations, onAlerts }: { collections: TrackCollection[]; onOpen: (id: string) => void; onNew: () => void; onRestore: () => void; alertCount: number; onReports: () => void; onTeam: () => void; onAutomations: () => void; onAlerts: () => void }) {
   const { t } = useI18n();
   const totalRecords = collections.reduce((sum, item) => sum + item.records.length, 0);
   return (
@@ -194,7 +219,7 @@ function TrackOverview({ collections, onOpen, onNew, onRestore, pro, alertCount,
       </div>
       <section className="operations-center"><div className="operations-center-head"><ShieldCheck /><span><strong>Business operations center</strong><small>Reports, alerts, roles, and automation</small></span>{alertCount > 0 && <b>{alertCount}</b>}</div><div className="operations-center-actions"><button onClick={onReports}><BarChart3 /> Reports</button><button onClick={onAlerts}><BellRing /> Alerts</button><button onClick={onTeam}><Users /> Team</button><button onClick={onAutomations}><Gauge /> Automate</button></div></section>
 
-      <div className="track-heading"><div><span>YOUR OPERATIONS</span><h2>{t('Workspaces')}</h2></div><div className="track-heading-actions"><button className="muted" onClick={onRestore}><FileJson /> {t('Restore')}</button><button onClick={onNew} disabled={!pro && collections.length >= 1}><Plus /> {t('New')}</button></div></div>
+      <div className="track-heading"><div><span>YOUR OPERATIONS</span><h2>{t('Workspaces')}</h2></div><div className="track-heading-actions"><button className="muted" onClick={onRestore}><FileJson /> {t('Restore')}</button><button disabled={collections.length >= maxTrackWorkspaces} onClick={onNew}><Plus /> {t('New')}</button></div></div>
       {collections.length === 0 ? (
         <div className="track-empty">
           <span><PackageCheck /></span><h3>{t('Start with a workflow')}</h3><p>{t('Create records, print their codes, then scan to update status or quantity.')}</p>
@@ -210,12 +235,12 @@ function TrackOverview({ collections, onOpen, onNew, onRestore, pro, alertCount,
         ))}</div>
       )}
 
-      <aside className="track-limit"><ShieldCheck /><span><strong>{t('Free workspace allowance')}</strong><small>1 workspace · 25 records · Local backup</small></span></aside>
+      <aside className="track-limit"><ShieldCheck /><span><strong>Local storage protected</strong><small>{collections.length >= maxTrackWorkspaces ? `${maxTrackWorkspaces}-workspace limit reached · Export or delete before adding more` : 'Writes are size-checked · Export backups regularly'}</small></span></aside>
     </>
   );
 }
 
-function CollectionDetail({ collection, onBack, onAdd, onOpenRecord, onNotice, onImport, onLabels, recordLimit }: {
+function CollectionDetail({ collection, onBack, onAdd, onOpenRecord, onNotice, onImport, onLabels, onDelete, recordLimit }: {
   collection: TrackCollection;
   onBack: () => void;
   onAdd: () => void;
@@ -223,24 +248,27 @@ function CollectionDetail({ collection, onBack, onAdd, onOpenRecord, onNotice, o
   onNotice: (message: string) => void;
   onImport: () => void;
   onLabels: () => void;
+  onDelete: () => void;
   recordLimit: number;
 }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const filtered = collection.records.filter((record) => `${record.name} ${record.code} ${record.location}`.toLowerCase().includes(query.toLowerCase()));
-  const active = collection.records.filter((record) => !['out_of_stock', 'checked_out', 'needs_service', 'failed'].includes(record.status) && !(record.dueAt && record.dueAt < Date.now())).length;
+  const active = collection.records.filter((record) => !recordNeedsAttention(collection.template, record)).length;
   const issue = collection.records.length - active;
   const exportFile = async (format: 'csv' | 'json') => {
-    const safeName = collection.name.replace(/[^a-z\d-_]+/gi, '-').toLowerCase();
-    const content = format === 'csv' ? collectionCsv(collection) : JSON.stringify(collection, null, 2);
-    await exportTextFile(`${safeName}.${format}`, content, format === 'csv' ? 'text/csv' : 'application/json');
-    onNotice(`${format.toUpperCase()} export ready`);
+    try {
+      const safeName = collection.name.replace(/[^a-z\d-_]+/gi, '-').toLowerCase();
+      const content = format === 'csv' ? collectionCsv(collection) : JSON.stringify(collection, null, 2);
+      await exportTextFile(`${safeName}.${format}`, content, format === 'csv' ? 'text/csv' : 'application/json');
+      onNotice(`${format.toUpperCase()} export ready`);
+    } catch { onNotice(`${format.toUpperCase()} export could not be completed`); }
   };
 
   return (
     <>
       <button className="track-back" onClick={onBack}><ArrowLeft /> {t('All workspaces')}</button>
-      <div className="collection-heading"><TemplateIcon template={collection.template} /><span><small>{templateInfo[collection.template].label}</small><h1>{collection.name}</h1></span></div>
+      <div className="collection-heading"><TemplateIcon template={collection.template} /><span><small>{templateInfo[collection.template].label}</small><h1>{collection.name}</h1></span><button className="collection-delete" onClick={onDelete} aria-label={`Delete ${collection.name}`}><Trash2 /></button></div>
       <div className="collection-stats">
         <span><strong>{collection.records.length}</strong><small>{t('Total')}</small></span>
         <span><strong>{active}</strong><small>{t('Ready')}</small></span>
@@ -253,7 +281,7 @@ function CollectionDetail({ collection, onBack, onAdd, onOpenRecord, onNotice, o
         <button onClick={() => exportFile('json')}><FileJson /> {t('Backup')}</button>
       </div>
       <div className="track-heading records-heading"><div><span>RECORDS</span><h2>{t('Items')}</h2></div><button disabled={collection.records.length >= recordLimit} onClick={onAdd}><Plus /> {t('Add')}</button></div>
-      {collection.records.length > 4 && <label className="track-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records" /></label>}
+      {collection.records.length > 4 && <label className="track-search"><Search /><input aria-label="Search records" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records" /></label>}
       {filtered.length === 0 ? (
         <button className="records-empty" onClick={onAdd} disabled={collection.records.length >= recordLimit}><Box /><strong>{collection.records.length ? 'No matching records' : t('Add your first record')}</strong><small>QRY creates a unique scannable code automatically.</small></button>
       ) : (
@@ -282,8 +310,8 @@ function WorkspaceSheet({ onClose, onCreate }: { onClose: () => void; onCreate: 
   const submit = () => onCreate({ id: makeTrackId(), name: name.trim(), template, records: [], activity: [], createdAt: Date.now() });
   return (
     <Sheet label="Create operations workspace" onClose={onClose}>
-      <span className="sheet-kicker">QRY Track</span><h2>{t('Choose a workflow')}</h2><p className="sheet-description">One workspace is included in the free beta.</p>
-      <div className="template-options">{(Object.keys(templateInfo) as TrackTemplate[]).map((item) => <button className={template === item ? 'active' : ''} key={item} onClick={() => setTemplate(item)}><TemplateIcon template={item} /><span><strong>{templateInfo[item].label}</strong><small>{templateInfo[item].description}</small></span>{template === item && <Check />}</button>)}</div>
+      <span className="sheet-kicker">QRY Track</span><h2>{t('Choose a workflow')}</h2><p className="sheet-description">Workspaces stay on this device unless you explicitly export them.</p>
+      <div className="template-options">{(Object.keys(templateInfo) as TrackTemplate[]).map((item) => <button className={template === item ? 'active' : ''} aria-pressed={template === item} key={item} onClick={() => setTemplate(item)}><TemplateIcon template={item} /><span><strong>{templateInfo[item].label}</strong><small>{templateInfo[item].description}</small></span>{template === item && <Check />}</button>)}</div>
       <label className="track-field"><span>{t('Workspace name')}</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={template === 'attendance' ? 'Morning class' : template === 'inventory' ? 'Main storeroom' : 'Workshop assets'} /></label>
       <button className="solid-button full" disabled={!name.trim()} onClick={submit}>{t('Create workspace')} <ChevronRight /></button>
     </Sheet>
@@ -305,25 +333,31 @@ function RecordSheet({ collection, onClose, onCreate }: { collection: TrackColle
   const [reference, setReference] = useState('');
   const code = nextRecordCode(collection);
   const advanced = !['assets', 'attendance', 'inventory'].includes(collection.template);
-  const submit = () => onCreate({
-    id: makeTrackId(), code, name: name.trim(), location: location.trim(), notes: notes.trim(), quantity: Math.max(0, Number(quantity) || 0),
-    status: initialStatus(collection.template, Number(quantity)),
+  const quantityValue = boundedWholeNumber(quantity, 1_000_000);
+  const intervalValue = interval ? boundedWholeNumber(interval, 3650) : undefined;
+  const validNumbers = quantityValue !== undefined && (!interval || intervalValue !== undefined);
+  const submit = () => {
+    if (!validNumbers) return;
+    onCreate({
+    id: makeTrackId(), code, name: name.trim(), location: location.trim(), notes: notes.trim(), quantity: quantityValue,
+    status: initialStatus(collection.template, quantityValue),
     createdAt: Date.now(),
     assignee: assignee.trim() || undefined,
     dueAt: due ? new Date(`${due}T12:00:00`).getTime() : undefined,
-    intervalDays: interval ? Math.max(0, Number(interval) || 0) : undefined,
+    intervalDays: intervalValue,
     priority,
     checklist: checklist.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 50),
     contact: contact.trim() || undefined,
     reference: reference.trim() || undefined,
   });
+  };
   return (
     <Sheet label="Add record" onClose={onClose}>
       <span className="sheet-kicker">{code}</span><h2>{t('Add a record')}</h2><p className="sheet-description">A permanent QRY label is created with it.</p>
       <div className="record-form">
         <label className="track-field"><span>{t('Name')}</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={collection.template === 'attendance' ? 'Student name' : collection.template === 'inventory' ? 'Item name' : 'Asset name'} /></label>
         <label className="track-field"><span>{t('Location')}</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Optional location" /></label>
-        {collection.template === 'inventory' && <label className="track-field"><span>Starting quantity</span><input type="number" min="0" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>}
+        {collection.template === 'inventory' && <label className="track-field"><span>Starting quantity</span><input type="number" min="0" max="1000000" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>}
         {advanced && <>
           <label className="track-field"><span>Assigned to / host</span><input value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder="Person or team" /></label>
           <div className="record-form-grid"><label className="track-field"><span>Due date</span><input type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label><label className="track-field"><span>Priority</span><select value={priority} onChange={(event) => setPriority(event.target.value as TrackRecord['priority'])}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label></div>
@@ -334,12 +368,18 @@ function RecordSheet({ collection, onClose, onCreate }: { collection: TrackColle
         </>}
         <label className="track-field"><span>{t('Notes')}</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional notes" /></label>
       </div>
-      <button className="solid-button full" disabled={!name.trim()} onClick={submit}>{t('Create record and code')} <QrCode /></button>
+      {!validNumbers && <p className="deployment-error">Use whole numbers from 0–1,000,000 for quantity and 0–3,650 for repeat days.</p>}
+      <button className="solid-button full" disabled={!name.trim() || !validNumbers} onClick={submit}>{t('Create record and code')} <QrCode /></button>
     </Sheet>
   );
 }
 
-function RecordActionSheet({ collection, record, onClose, onAction }: { collection: TrackCollection; record: TrackRecord; onClose: () => void; onAction: (action: TrackAction, evidence?: { notes?: string; performedBy?: string; photoDataUrl?: string }) => void }) {
+function boundedWholeNumber(value: string, maximum: number): number | undefined {
+  const number = Number(value);
+  return Number.isFinite(number) && Number.isInteger(number) && number >= 0 && number <= maximum ? number : undefined;
+}
+
+function RecordActionSheet({ collection, record, onClose, onDelete, onAction }: { collection: TrackCollection; record: TrackRecord; onClose: () => void; onDelete: () => void; onAction: (action: TrackAction, evidence?: { notes?: string; performedBy?: string; photoDataUrl?: string }) => void }) {
   const { t } = useI18n();
   const [qrImage, setQrImage] = useState('');
   const payload = useMemo(() => trackPayload(collection.id, record.id), [collection.id, record.id]);
@@ -364,10 +404,11 @@ function RecordActionSheet({ collection, record, onClose, onAction }: { collecti
       <div className="record-sheet-head"><TemplateIcon template={collection.template} /><span><small>{record.code}</small><h2>{record.name}</h2></span></div>
       <div className="record-meta"><span><small>{t('Status')}</small><strong>{humanStatus(record.status)}</strong></span>{collection.template === 'inventory' && <span><small>{t('Quantity')}</small><strong>{record.quantity}</strong></span>}{record.location && <span><small>{t('Location')}</small><strong><MapPin /> {record.location}</strong></span>}{record.dueAt && <span><small>Due</small><strong>{new Date(record.dueAt).toLocaleDateString()}</strong></span>}</div>
       {record.checklist?.length ? <div className="record-checklist"><span>CHECKLIST</span>{record.checklist.map((item) => <label key={item}><Check /> {item}</label>)}</div> : null}
-      {evidenceActions && <><div className="inspection-evidence"><label><span>Performed by</span><input value={performedBy} onChange={(event) => setPerformedBy(event.target.value)} placeholder="Name or team" /></label><label><span>Evidence notes</span><textarea value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Condition, readings, issues, or proof notes" /></label></div><label className="evidence-photo"><span>{photoDataUrl ? <img src={photoDataUrl} alt="Evidence preview" /> : <QrCode />}</span><strong>{photoDataUrl ? 'Evidence photo ready' : 'Add evidence photo'}</strong><small>Camera or image · compressed on device</small><input type="file" accept="image/*" capture="environment" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; try { setPhotoDataUrl(await resizeEvidencePhoto(file)); } catch (error) { setEvidence(error instanceof Error ? error.message : 'Photo could not be read.'); } }} /></label></>}
+      {evidenceActions && <><div className="inspection-evidence"><label><span>Performed by</span><input value={performedBy} onChange={(event) => setPerformedBy(event.target.value)} placeholder="Name or team" /></label><label><span>Evidence notes</span><textarea value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Condition, readings, issues, or proof notes" /></label></div><label className="evidence-photo"><span>{photoDataUrl ? <img src={photoDataUrl} alt="Evidence preview" /> : <QrCode />}</span><strong>{photoDataUrl ? 'Evidence photo ready' : 'Add evidence photo'}</strong><small>Camera or image · compressed on device</small><input type="file" accept="image/*" capture="environment" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; try { setPhotoDataUrl(await resizeEvidencePhoto(file)); } catch (error) { setEvidence(error instanceof Error ? error.message : 'Photo could not be read.'); } }} /></label>{photoDataUrl && <button type="button" className="secondary-button remove-evidence-photo" onClick={() => setPhotoDataUrl('')}>Remove pending photo</button>}</>}
       <div className="quick-actions"><span>QUICK ACTION</span><div>{actions.map((action) => <button key={action.id} onClick={() => onAction(action.id, { notes: evidence, performedBy, photoDataUrl: photoDataUrl || undefined })}>{action.icon}<strong>{action.label}</strong></button>)}</div></div>
       {record.inspections?.length ? <details className="inspection-history"><summary>Inspection and completion history ({record.inspections.length})</summary>{record.inspections.slice(0, 8).map((item) => <div key={item.id}>{item.photoDataUrl ? <img src={item.photoDataUrl} alt="Inspection evidence" /> : <StatusDot status={item.result} />}<span><strong>{humanStatus(item.result)} · {item.performedBy}</strong><small>{item.notes || 'No evidence note'} · {relativeTime(item.createdAt)}</small></span></div>)}</details> : null}
       <details className="label-preview"><summary><QrCode /> {t('View printable label')}</summary><div>{qrImage && <img src={qrImage} alt={`QR code for ${record.name}`} />}<strong>{record.name}</strong><small>{record.code} · Scan with QRY</small></div></details>
+      <button type="button" className="danger-button record-delete" onClick={onDelete}><Trash2 /> Delete record and evidence</button>
     </Sheet>
   );
 }
@@ -381,7 +422,8 @@ function TemplateIcon({ template }: { template: TrackTemplate }) {
 }
 
 function StatusDot({ status }: { status: string }) {
-  return <span className={`status-dot-record ${['available', 'present', 'in_stock', 'passed', 'completed', 'returned'].includes(status) ? 'good' : ['not_marked', 'pending'].includes(status) ? 'neutral' : 'warn'}`} />;
+  const tone = ['available', 'present', 'in_stock', 'passed', 'completed', 'returned'].includes(status) ? 'good' : ['not_marked', 'pending'].includes(status) ? 'neutral' : 'warn';
+  return <span className={`status-badge-record ${tone}`}><i className={`status-dot-record ${tone}`} aria-hidden="true" /><span>{humanStatus(status)}</span></span>;
 }
 
 function humanStatus(value: string): string {

@@ -1,15 +1,18 @@
 import type { TrackCollection } from '../track/store';
+import type { BusinessState } from '../business/store';
 
 export type SyncEnvelope = {
   schemaVersion: 1;
   deviceId: string;
   updatedAt: number;
   collections: TrackCollection[];
+  business: BusinessState;
 };
 
 export type SyncResult = {
   status: 'local-only' | 'synced' | 'conflict';
   envelope: SyncEnvelope;
+  remoteVersion?: number;
 };
 
 export interface SyncAdapter {

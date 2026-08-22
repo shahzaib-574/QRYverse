@@ -180,14 +180,12 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue>({ locale: 'en', setLocale: () => undefined, t: (value) => value });
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>(() => {
-    const stored = localStorage.getItem('qry.locale.v1');
-    if (stored === 'en' || stored === 'ur') return stored;
-    return navigator.language.toLowerCase().startsWith('ur') ? 'ur' : 'en';
-  });
+  // The first Play release is English-only. Keep the translation boundary so a
+  // fully reviewed locale can be enabled later without a partial mixed-language UI.
+  const [locale, setLocale] = useState<Locale>('en');
 
   useEffect(() => {
-    localStorage.setItem('qry.locale.v1', locale);
+    try { localStorage.setItem('qry.locale.v1', locale); } catch { /* Locale persistence must not block launch. */ }
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === 'ur' ? 'rtl' : 'ltr';
   }, [locale]);

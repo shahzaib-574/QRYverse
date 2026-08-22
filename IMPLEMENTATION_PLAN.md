@@ -16,15 +16,17 @@ QRY uses a freemium acquisition loop: useful consumer scanning and static creati
 
 Success gate: builds cleanly, core payload rules pass self-checks, and Android debug APK installs and scans on at least two physical devices.
 
-## Phase 2 — Closed beta (in progress)
+## Phase 2 — Closed beta (implemented; hardware/store validation pending)
 
 - Gallery-image scanning and multi-code selection — implemented
 - Share sheet integration and native file saving — implemented
 - Haptic scan confirmation — implemented
-- Accessibility and English/Urdu RTL localization — implemented
+- Accessibility and English-first release UI — implemented; full Urdu/RTL translation and device QA deferred
 - Local privacy-scrubbed crash diagnostics and recovery UI — implemented
-- Credential-gated Play Billing entitlement flow — implemented; store activation pending
+- Ad-supported launch boundary — implemented; no paid-plan UI or billing SDK is bundled
 - Privacy-preserving product analytics — pending consent and vendor decision
+- Modern minimalist soft-neumorphic design system, responsive rail/navigation, theme modes, dialog accessibility, and destructive-action safeguards — implemented
+- AdMob adaptive banner and UMP consent/privacy-options flow — implemented with test IDs; production console IDs pending
 
 Success gate: 30-day scan retention above 12%, crash-free sessions above 99.5%, and at least 20 recurring small-business testers.
 
@@ -37,34 +39,36 @@ Market review found ordinary QR generation, landing pages, and analytics crowded
 - Inventory: quantity adjustment and stock status
 - Unique permanent record codes, printable previews, and multi-record PDF label sheets
 - Append-only local activity history
-- Mapped CSV import with duplicate handling and plan-limit preview
+- Mapped CSV import with duplicate handling and pre-apply validation
 - CSV export plus validated JSON backup restore (merge or replace)
 - Maintenance, inspection, visitor, vehicle, rental, facility, delivery, and training workflow packs
 - Recurring schedules, assignees, priorities, checklists, evidence photos, and inspection history
 - On-device alerts for due dates, low stock, service needs, and failed inspections
 - Team-role staging, business reporting, automation settings, and opt-in webhook testing
 - Local dynamic campaigns with stable codes, editable destinations, pause/resume, and scan counts
-- Android Track and campaign app links
+- Android custom-scheme Track and campaign links; verified HTTPS App Links deferred until a controlled domain exists
 
-Suggested packaging:
+Post-launch packaging experiments (not enforced in the v1 binary):
 
-- Free: one workspace, 25 records, local backup
+- Launch Free: local workflows without a paid quota, bounded by safe device storage and backup/export controls
 - Track Pro: USD 6.99/month or USD 49.99/year, higher limits and all templates
 - Business: USD 14.99–24.99/month later, team sync, roles, and consolidated analytics
 - Event Pass: USD 9.99/event later for organizers preferring one-off access
 
-## Phase 3 — Studio backend (local client complete; hosted services pending)
+## Phase 3 — Studio backend (hosted foundation implemented; production deployment pending)
 
-- Authenticated accounts and organization workspaces
-- Stable short domains with editable redirect rules — local campaign routing implemented; public redirect host pending
-- Scan-event aggregation with retention controls — local scan counts implemented; hosted aggregation pending
+- Authenticated accounts and tenant-isolated organization workspaces — implemented
+- Versioned manual cross-device backup with conflict rejection — implemented
+- Stable hosted paths with editable redirect rules — implemented; production domain pending
+- Daily scan aggregation without persisted IP addresses — implemented
 - Custom domains, bulk imports, and exports
-- Subscription enforcement, quotas, invoices, and account deletion
+- Owner-only transactional cloud account deletion and session revocation — implemented
+- Subscription enforcement, quotas, and invoices — deferred to a separately reviewed post-launch release
 - Restaurant menu and event campaign templates
 
 Success gate: at least 5% of active creators start a Studio trial and at least 25% of trials convert to paid.
 
-The client now contains a typed `SyncAdapter` contract and an explicit local-only implementation. A remote adapter must not be activated until authentication, tenant isolation, conflict resolution, encryption, export, and deletion policies are selected.
+The client contains local-only and remote sync adapters, but the exact v1 Play profile is cloud-off and rejects a release build with `VITE_QRY_CLOUD_API_URL` set. The hosted foundation includes authentication, tenant isolation, conflict rejection, explicit network actions, hosted-campaign deletion, and owner account deletion for development. Production activation still requires HTTPS termination, encrypted-backup operations, monitoring, a public web deletion request channel, data export, and a reviewed retention policy.
 
 ## Phase 4 — Commercial launch
 

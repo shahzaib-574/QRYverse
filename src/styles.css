@@ -21,7 +21,7 @@
 
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
-body { margin: 0; min-width: 320px; background: #e9eee8; }
+body { margin: 0; min-width: 0; background: #e9eee8; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { border: 0; cursor: pointer; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid rgba(231, 120, 67, .34); outline-offset: 2px; }
@@ -240,6 +240,7 @@ svg { width: 20px; height: 20px; stroke-width: 1.9; }
 
 .recovery-screen { min-height: 100dvh; padding: 32px; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: #18332c; background: #f7f8f3; }
 .recovery-mark { width: 58px; height: 58px; display: grid; place-items: center; border-radius: 18px; color: white; background: #173f35; font-size: 15px; font-weight: 850; letter-spacing: -.03em; }.recovery-screen h1 { margin-top: 20px; font-size: 25px; letter-spacing: -.04em; }.recovery-screen p { max-width: 310px; margin-top: 8px; color: #718078; font-size: 11px; line-height: 1.5; }.recovery-screen button { min-height: 46px; margin-top: 19px; padding: 0 18px; border-radius: 14px; color: white; background: #173f35; font-size: 11px; font-weight: 750; }
+.recovery-screen .recovery-reset { margin-top: 9px; color: #8c4335; border: 1px solid #e0bfb6; background: #f7e8e3; }
 
 .bottom-nav {
   width: min(100%, 500px);

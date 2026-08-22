@@ -1,3 +1,5 @@
+import { quoteCsvCell } from '../lib/csv';
+
 export type TrackTemplate = 'assets' | 'attendance' | 'inventory' | 'maintenance' | 'inspection' | 'visitors' | 'vehicles' | 'rentals' | 'facilities' | 'deliveries' | 'training';
 
 export type TrackInspection = {
@@ -45,8 +47,19 @@ export type TrackCollection = {
   activity: TrackActivity[];
   createdAt: number;
 };
+export type TrackCollectionsChange = TrackCollection[] | ((current: TrackCollection[]) => TrackCollection[]);
 
 const key = 'qry.track.v1';
+export const maxTrackStorageBytes = 3 * 1024 * 1024;
+export const maxTrackRecordsPerWorkspace = 1000;
+export const maxTrackWorkspaces = 100;
+
+export class TrackStorageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TrackStorageError';
+  }
+}
 
 export const templateInfo: Record<TrackTemplate, { label: string; description: string; prefix: string }> = {
   assets: { label: 'Asset checkout', description: 'Tools, keys, equipment and service state', prefix: 'AST' },
@@ -64,15 +77,27 @@ export const templateInfo: Record<TrackTemplate, { label: string; description: s
 
 export function readTrackCollections(): TrackCollection[] {
   try {
-    const value = JSON.parse(localStorage.getItem(key) ?? '[]');
-    return Array.isArray(value) ? value : [];
+    const value = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
+    return Array.isArray(value) ? uniqueById(value.slice(0, 100).flatMap((entry, index) => sanitizeStoredCollection(entry, index))) : [];
   } catch {
     return [];
   }
 }
 
 export function writeTrackCollections(collections: TrackCollection[]): void {
-  localStorage.setItem(key, JSON.stringify(collections));
+  if (collections.length > maxTrackWorkspaces) {
+    throw new TrackStorageError(`Track supports up to ${maxTrackWorkspaces} local workspaces. Delete one before creating or restoring another.`);
+  }
+  const serialized = JSON.stringify(collections);
+  const bytes = new TextEncoder().encode(serialized).byteLength;
+  if (bytes > maxTrackStorageBytes) {
+    throw new TrackStorageError('This change was not saved because Track storage is full. Remove the pending evidence photo or restore a smaller backup, then try again.');
+  }
+  try {
+    localStorage.setItem(key, serialized);
+  } catch {
+    throw new TrackStorageError('This change was not saved because device storage is unavailable or full. Remove the pending evidence photo, free app storage, or restore a smaller backup, then try again.');
+  }
 }
 
 export function trackPayload(collectionId: string, recordId: string): string {
@@ -150,11 +175,99 @@ export function makeTrackId(): string {
 }
 
 export function collectionCsv(collection: TrackCollection): string {
-  const cells = (values: Array<string | number>) => values.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',');
+  const cells = (values: Array<string | number>) => values.map(quoteCsvCell).join(',');
   return [
     cells(['Code', 'Name', 'Status', 'Quantity', 'Location', 'Assignee', 'Priority', 'Due', 'Notes', 'Created']),
     ...collection.records.map((record) => cells([
       record.code, record.name, record.status, record.quantity, record.location, record.assignee ?? '', record.priority ?? '', record.dueAt ? new Date(record.dueAt).toISOString() : '', record.notes, new Date(record.createdAt).toISOString(),
     ])),
   ].join('\r\n');
+}
+
+function sanitizeStoredCollection(value: unknown, index: number): TrackCollection[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const raw = value as Record<string, unknown>;
+  const template = String(raw.template);
+  if (!Object.prototype.hasOwnProperty.call(templateInfo, template)) return [];
+  const recordCandidates = Array.isArray(raw.records)
+    ? raw.records.slice(0, maxTrackRecordsPerWorkspace).flatMap((record, recordIndex) => sanitizeStoredRecord(record, recordIndex))
+    : [];
+  const records = uniqueById(recordCandidates);
+  const activityCandidates = Array.isArray(raw.activity) ? raw.activity.slice(0, 500).flatMap((event) => {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return [];
+    const item = event as Record<string, unknown>;
+    return [{
+      id: storedText(item.id, 120) || makeTrackId(),
+      recordId: storedText(item.recordId, 120),
+      recordName: storedText(item.recordName, 160),
+      action: storedText(item.action, 120),
+      detail: storedText(item.detail, 300),
+      createdAt: storedTimestamp(item.createdAt),
+    } satisfies TrackActivity];
+  }) : [];
+  const activity = uniqueById(activityCandidates);
+  return [{
+    id: storedText(raw.id, 120) || makeTrackId(),
+    name: storedText(raw.name, 160) || `Recovered workspace ${index + 1}`,
+    template: template as TrackTemplate,
+    records,
+    activity,
+    createdAt: storedTimestamp(raw.createdAt),
+  }];
+}
+
+function sanitizeStoredRecord(value: unknown, index: number): TrackRecord[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const raw = value as Record<string, unknown>;
+  const name = storedText(raw.name, 160);
+  if (!name) return [];
+  const quantity = Number(raw.quantity);
+  const inspections = Array.isArray(raw.inspections) ? raw.inspections.slice(0, 100).flatMap((inspection) => {
+    if (!inspection || typeof inspection !== 'object' || Array.isArray(inspection)) return [];
+    const item = inspection as Record<string, unknown>;
+    const result = String(item.result);
+    if (!['passed', 'failed', 'completed'].includes(result)) return [];
+    const photoDataUrl = typeof item.photoDataUrl === 'string' && item.photoDataUrl.length <= 500_000 && /^data:image\/(?:jpeg|png|webp);base64,/i.test(item.photoDataUrl) ? item.photoDataUrl : undefined;
+    return [{ id: storedText(item.id, 120) || makeTrackId(), result: result as TrackInspection['result'], notes: storedText(item.notes, 500), performedBy: storedText(item.performedBy, 160), createdAt: storedTimestamp(item.createdAt), photoDataUrl }];
+  }) : undefined;
+  return [{
+    id: storedText(raw.id, 120) || makeTrackId(),
+    code: storedText(raw.code, 80) || `RECOVERED-${index + 1}`,
+    name,
+    status: storedText(raw.status, 60) || 'pending',
+    quantity: Number.isFinite(quantity) && quantity >= 0 ? quantity : 0,
+    location: storedText(raw.location, 160),
+    notes: storedText(raw.notes, 500),
+    createdAt: storedTimestamp(raw.createdAt),
+    assignee: storedText(raw.assignee, 160) || undefined,
+    dueAt: raw.dueAt ? storedTimestamp(raw.dueAt) : undefined,
+    intervalDays: Number.isFinite(Number(raw.intervalDays)) ? Math.max(0, Math.min(3650, Number(raw.intervalDays))) : undefined,
+    priority: ['low', 'normal', 'high'].includes(String(raw.priority)) ? raw.priority as TrackRecord['priority'] : undefined,
+    checklist: Array.isArray(raw.checklist) ? raw.checklist.slice(0, 50).map((item) => storedText(item, 200)).filter(Boolean) : undefined,
+    inspections,
+    contact: storedText(raw.contact, 160) || undefined,
+    reference: storedText(raw.reference, 160) || undefined,
+  }];
+}
+
+function storedText(value: unknown, limit: number): string {
+  return typeof value === 'string' ? Array.from(value, (character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 && code !== 9 && code !== 10 && code !== 13 ? ' ' : character;
+  }).join('').trim().slice(0, limit) : '';
+}
+
+function storedTimestamp(value: unknown): number {
+  const timestamp = Number(value);
+  const latest = Date.now() + 100 * 365.25 * 86_400_000;
+  return Number.isFinite(timestamp) && timestamp > 0 && timestamp <= latest ? timestamp : Date.now();
+}
+
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }

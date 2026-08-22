@@ -1,4 +1,4 @@
-import { makeTrackId, nextRecordCode, type TrackCollection, type TrackRecord } from './store';
+import { makeTrackId, maxTrackRecordsPerWorkspace, nextRecordCode, type TrackCollection, type TrackRecord } from './store';
 import { initialStatus } from '../business/store';
 
 export type ImportField = 'name' | 'code' | 'location' | 'quantity' | 'notes';
@@ -72,6 +72,7 @@ export function buildImportPreview(
   if (mapping.name === undefined) return { records: [], skipped: data.rows.length, errors: ['Choose a column for Name.'] };
   const byCode = new Map(collection.records.map((record) => [record.code.toLowerCase(), record]));
   const records: TrackRecord[] = [];
+  const previewIndexById = new Map<string, number>();
   const errors: string[] = [];
   let skipped = 0;
   let virtual = collection;
@@ -86,18 +87,32 @@ export function buildImportPreview(
     const quantity = quantityValue ? Number(quantityValue) : 1;
     if (!Number.isFinite(quantity) || quantity < 0) { skipped += 1; errors.push(`Row ${index + 2}: quantity is invalid.`); return; }
 
-    const record: TrackRecord = {
-      id: existing?.id ?? makeTrackId(),
+    const record: TrackRecord = existing ? {
+      ...existing,
+      code: suppliedCode || existing.code,
+      name,
+      quantity: mapping.quantity === undefined ? existing.quantity : quantity,
+      location: mapping.location === undefined ? existing.location : valueAt(row, mapping.location).trim(),
+      notes: mapping.notes === undefined ? existing.notes : valueAt(row, mapping.notes).trim(),
+    } : {
+      id: makeTrackId(),
       code: suppliedCode || nextRecordCode(virtual),
       name,
       status: initialStatus(collection.template, quantity),
       quantity,
       location: valueAt(row, mapping.location).trim(),
       notes: valueAt(row, mapping.notes).trim(),
-      createdAt: existing?.createdAt ?? Date.now(),
+      createdAt: Date.now(),
     };
-    records.push(record);
-    virtual = { ...virtual, records: [record, ...virtual.records] };
+    const previewIndex = previewIndexById.get(record.id);
+    if (previewIndex === undefined) {
+      previewIndexById.set(record.id, records.length);
+      records.push(record);
+    } else {
+      records[previewIndex] = record;
+    }
+    const virtualHasRecord = virtual.records.some((item) => item.id === record.id);
+    virtual = { ...virtual, records: virtualHasRecord ? virtual.records.map((item) => item.id === record.id ? record : item) : [record, ...virtual.records] };
     byCode.set(record.code.toLowerCase(), record);
   });
   return { records, skipped, errors: errors.slice(0, 20) };
@@ -106,6 +121,17 @@ export function buildImportPreview(
 export function applyImportedRecords(collection: TrackCollection, preview: ImportPreview): TrackCollection {
   const importedIds = new Set(preview.records.map((record) => record.id));
   return { ...collection, records: [...preview.records, ...collection.records.filter((record) => !importedIds.has(record.id))] };
+}
+
+export function limitImportedRecords(collection: TrackCollection, records: TrackRecord[], recordLimit: number): TrackRecord[] {
+  const existingIds = new Set(collection.records.map((record) => record.id));
+  let newSpaces = Math.max(0, recordLimit - collection.records.length);
+  return records.filter((record) => {
+    if (existingIds.has(record.id)) return true;
+    if (newSpaces === 0) return false;
+    newSpaces -= 1;
+    return true;
+  });
 }
 
 export type BackupPreview = {
@@ -121,6 +147,7 @@ export function parseBackup(input: string): BackupPreview {
   if (candidates.length === 0 || candidates.length > 100) throw new Error('Backup must contain between 1 and 100 workspaces.');
   const warnings: string[] = [];
   const collections = candidates.map((candidate, index) => sanitizeCollection(candidate, index, warnings));
+  assertUnique(collections.map((collection) => collection.id), 'workspace IDs');
   const recordCount = collections.reduce((sum, collection) => sum + collection.records.length, 0);
   if (recordCount > 10_000) throw new Error('Backup contains more than 10,000 records.');
   return { collections, recordCount, warnings };
@@ -133,6 +160,7 @@ export function mergeBackup(local: TrackCollection[], incoming: TrackCollection[
     if (!current) { merged.set(imported.id, imported); continue; }
     const records = new Map(current.records.map((record) => [record.id, record]));
     imported.records.forEach((record) => records.set(record.id, record));
+    if (records.size > maxTrackRecordsPerWorkspace) throw new Error(`${imported.name} would exceed ${maxTrackRecordsPerWorkspace} records after merging. Use Replace or import a smaller backup.`);
     const activity = new Map(current.activity.map((event) => [event.id, event]));
     imported.activity.forEach((event) => activity.set(event.id, event));
     merged.set(imported.id, {
@@ -150,7 +178,7 @@ function valueAt(row: string[], index: number | undefined): string {
   return index === undefined ? '' : (row[index] ?? '');
 }
 
-function sanitizeCollection(value: unknown, index: number, warnings: string[]): TrackCollection {
+function sanitizeCollection(value: unknown, index: number, _warnings: string[]): TrackCollection {
   if (!value || typeof value !== 'object') throw new Error(`Workspace ${index + 1} is invalid.`);
   const raw = value as Record<string, unknown>;
   const template = raw.template;
@@ -158,8 +186,10 @@ function sanitizeCollection(value: unknown, index: number, warnings: string[]): 
   if (!Array.isArray(raw.records)) throw new Error(`Workspace ${index + 1} has no record list.`);
   const id = cleanText(raw.id, 120) || makeTrackId();
   const name = cleanText(raw.name, 120) || `Restored workspace ${index + 1}`;
-  const records = raw.records.slice(0, 10_000).map((record, recordIndex) => sanitizeRecord(record, recordIndex));
-  if (raw.records.length > records.length) warnings.push(`${name}: extra records were omitted.`);
+  if (raw.records.length > maxTrackRecordsPerWorkspace) throw new Error(`${name} contains more than ${maxTrackRecordsPerWorkspace} records.`);
+  const records = raw.records.map((record, recordIndex) => sanitizeRecord(record, recordIndex));
+  assertUnique(records.map((record) => record.id), `${name} record IDs`);
+  assertUnique(records.map((record) => record.code.toLowerCase()), `${name} record codes`);
   const activitySource = Array.isArray(raw.activity) ? raw.activity : [];
   const activity = activitySource.slice(0, 500).flatMap((event) => {
     if (!event || typeof event !== 'object') return [];
@@ -170,6 +200,7 @@ function sanitizeCollection(value: unknown, index: number, warnings: string[]): 
       createdAt: safeTimestamp(item.createdAt),
     }];
   }).map(({ occurredAt: _unused, ...event }) => event);
+  assertUnique(activity.map((event) => event.id), `${name} activity IDs`);
   return { id, name, template: template as TrackCollection['template'], records, activity, createdAt: safeTimestamp(raw.createdAt) };
 }
 
@@ -209,5 +240,10 @@ function cleanText(value: unknown, limit: number): string {
 
 function safeTimestamp(value: unknown): number {
   const timestamp = Number(value);
-  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now();
+  const latest = Date.now() + 100 * 365.25 * 86_400_000;
+  return Number.isFinite(timestamp) && timestamp > 0 && timestamp <= latest ? timestamp : Date.now();
+}
+
+function assertUnique(values: string[], label: string): void {
+  if (new Set(values).size !== values.length) throw new Error(`Backup contains duplicate ${label}.`);
 }

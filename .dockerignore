@@ -1,0 +1,13 @@
+.git
+.tools
+android
+data
+dist
+node_modules
+output
+tmp
+.env*
+*.apk
+*.aab
+*.jks
+*.keystore

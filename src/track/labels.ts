@@ -1,5 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import QRCode from 'qrcode';
+import { assertPdfTextSupported, pdfSafeText } from '../lib/pdf-text';
+import { maxLabelsPerPdf } from './limits';
 import { trackPayload, type TrackCollection, type TrackRecord } from './store';
 
 export type PageFormat = 'a4' | 'letter';
@@ -27,6 +29,8 @@ export async function generateLabelPdf(collection: TrackCollection, options: Lab
     ? collection.records.filter((record) => options.recordIds?.includes(record.id))
     : collection.records;
   if (selected.length === 0) throw new Error('Choose at least one record for the label sheet.');
+  if (selected.length > maxLabelsPerPdf) throw new Error(`Create labels in batches of up to ${maxLabelsPerPdf}.`);
+  assertPdfTextSupported([collection.name, ...selected.flatMap((record) => [record.name, record.code, record.location])]);
 
   const document = await PDFDocument.create();
   document.setTitle(`${collection.name} - QRY Track labels`);
@@ -52,7 +56,7 @@ export async function generateLabelPdf(collection: TrackCollection, options: Lab
       const y = pageHeight - margin - (row + 1) * labelHeight - row * gap;
       await drawLabel(document, page, collection, batch[index], x, y, labelWidth, labelHeight, regular, bold, options.template);
     }
-    page.drawText(`QRY Track  |  ${collection.name}  |  Page ${Math.floor(offset / perPage) + 1}`, {
+    page.drawText(pdfSafeText(`QRY Track  |  ${collection.name}  |  Page ${Math.floor(offset / perPage) + 1}`), {
       x: margin, y: 8, size: 6.5, font: regular, color: rgb(0.42, 0.49, 0.45),
     });
   }
@@ -84,9 +88,9 @@ async function drawLabel(
   const nameSize = template === 'compact' ? 8.5 : template === 'standard' ? 12 : 15;
   const codeSize = template === 'compact' ? 6.5 : 8;
   const centerY = y + height / 2;
-  page.drawText(fitText(record.name, bold, nameSize, textWidth), { x: textX, y: centerY + nameSize * 0.35, size: nameSize, font: bold, color: rgb(0.09, 0.25, 0.21) });
-  page.drawText(fitText(record.code, regular, codeSize, textWidth), { x: textX, y: centerY - codeSize * 1.05, size: codeSize, font: regular, color: rgb(0.39, 0.46, 0.42) });
-  if (record.location && height >= 90) page.drawText(fitText(record.location, regular, codeSize, textWidth), { x: textX, y: centerY - codeSize * 2.45, size: codeSize, font: regular, color: rgb(0.39, 0.46, 0.42) });
+  page.drawText(fitText(pdfSafeText(record.name), bold, nameSize, textWidth), { x: textX, y: centerY + nameSize * 0.35, size: nameSize, font: bold, color: rgb(0.09, 0.25, 0.21) });
+  page.drawText(fitText(pdfSafeText(record.code), regular, codeSize, textWidth), { x: textX, y: centerY - codeSize * 1.05, size: codeSize, font: regular, color: rgb(0.39, 0.46, 0.42) });
+  if (record.location && height >= 90) page.drawText(fitText(pdfSafeText(record.location), regular, codeSize, textWidth), { x: textX, y: centerY - codeSize * 2.45, size: codeSize, font: regular, color: rgb(0.39, 0.46, 0.42) });
   page.drawText('SCAN WITH QRY', { x: textX, y: y + padding, size: template === 'compact' ? 5.2 : 6.3, font: bold, color: rgb(0.91, 0.47, 0.26) });
 }
 

@@ -1,0 +1,14 @@
+services:
+  qryverse-cloud:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      QRY_PUBLIC_BASE_URL: ${QRY_PUBLIC_BASE_URL:-http://localhost:8787}
+      QRY_CORS_ORIGINS: ${QRY_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    volumes:
+      - qryverse-data:/data
+
+volumes:
+  qryverse-data:

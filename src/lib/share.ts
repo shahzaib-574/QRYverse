@@ -43,7 +43,7 @@ export async function exportTextFile(filename: string, text: string, mimeType: s
     data: btoa(unescape(encodeURIComponent(text))),
     directory: Directory.Cache,
   });
-  await Share.share({ title: filename, files: [written.uri], dialogTitle: 'Export QRY Track data' });
+  await Share.share({ title: filename, files: [written.uri], dialogTitle: 'Share or save QRYverse file' });
   return 'shared';
 }
 

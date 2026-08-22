@@ -1,7 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">QRY</string>
-    <string name="title_activity_main">QRY</string>
-    <string name="package_name">com.royal.qrystudio</string>
-    <string name="custom_url_scheme">com.royal.qrystudio</string>
+    <string name="app_name">QRYverse</string>
+    <string name="title_activity_main">QRYverse</string>
 </resources>

@@ -20,7 +20,7 @@ export function captureDiagnostic(kind: DiagnosticEvent['kind'], error: unknown)
     message: scrubDiagnosticText(source.message).slice(0, 300),
     stack: source.stack ? scrubDiagnosticText(source.stack).split('\n').slice(0, 6).join('\n') : undefined,
     occurredAt: Date.now(),
-    appVersion: '0.2.0-beta',
+    appVersion: '1.0',
   };
   writeDiagnostics([event, ...readDiagnostics()].slice(0, maxEvents));
 }
@@ -39,14 +39,19 @@ export function installGlobalDiagnostics(): () => void {
 export function readDiagnostics(): DiagnosticEvent[] {
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? '[]');
-    return Array.isArray(value) ? value : [];
+    return Array.isArray(value) ? value.slice(0, maxEvents) : [];
   } catch {
     return [];
   }
 }
 
-export function clearDiagnostics(): void {
-  localStorage.removeItem(key);
+export function clearDiagnostics(): boolean {
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function diagnosticsExport(): string {

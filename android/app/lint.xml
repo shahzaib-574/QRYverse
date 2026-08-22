@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Capacitor's Cordova bridge loads this generated resource dynamically
+         through ConfigXmlParser, so static resource analysis cannot see it. -->
+    <issue id="UnusedResources">
+        <ignore path="src/main/res/xml/config.xml" />
+    </issue>
+</lint>
