@@ -69,7 +69,7 @@ Create final raster assets from the checked-in QRY icon system. Avoid screenshot
 | --- | --- | --- |
 | High-resolution icon | `store-assets/qryverse-play-icon-512.png` — 512 × 512 PNG | Deep green field, cream QR geometry, one restrained coral module; no text |
 | Feature graphic | `store-assets/qryverse-feature-graphic-1024x500.png` — 1024 × 500 PNG | Premium cream/green/coral QR-portal composition with no unsupported claims |
-| Phone screenshots | `store-assets/screenshots/01-home.png` through `08-studio.png` — 719 × 1278 PNG | Native 9:16 dark-theme UI covering Home, result safety, creation, Library, Track, record actions, operations, and Studio |
+| Phone screenshots | `store-assets/screenshots/01-home.png` through `08-studio.png` — 719 × 1278 RGB PNG | Native 9:16 light-theme UI covering Home, result safety, creation, Library, Track, record actions, operations, and Studio |
 | Optional 7-inch/10-inch tablet screenshots | Capture only after responsive tablet QA | Use actual tablet layouts; never upscale phone captures |
 | Optional promo video | Public or unlisted YouTube URL; monetization off | 25–35 second product walkthrough with no misleading claims |
 
@@ -120,6 +120,7 @@ Capture checklist for every screenshot:
 ## Release-time listing checklist
 
 - [ ] Choose and verify the publisher legal name, public support email, website, and postal details.
+- [ ] Complete [Play developer identity verification and package registration](https://support.google.com/googleplay/android-developer/answer/16984799?hl=en) for `com.royal.qrystudio` before Google's September 30, 2026 deadline.
 - [ ] Publish reviewed `/privacy.html`, `/terms.html`, and `/account-deletion.html` at durable HTTPS URLs.
 - [ ] Remove every `[RELEASE ...]`, `[PUBLISHER ...]`, and legal-review placeholder from public artifacts.
 - [ ] Confirm `VITE_QRY_CLOUD_API_URL` is absent and the release UI offers no account creation, cloud backup, or hosted redirect claim.

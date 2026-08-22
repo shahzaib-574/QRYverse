@@ -9,6 +9,7 @@ export type CloudViewState = {
   remoteVersion: number;
   remoteUpdatedAt: number;
   message?: string;
+  messageKind?: 'status' | 'error';
 };
 
 export function CloudAccountCard({ cloud, onAuthenticate, onLogout, onPull, onPush, onRefreshCampaigns, onDeleteAccount }: {
@@ -21,6 +22,7 @@ export function CloudAccountCard({ cloud, onAuthenticate, onLogout, onPull, onPu
   onDeleteAccount: () => Promise<void>;
 }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [submittedMode, setSubmittedMode] = useState<'login' | 'register'>();
   const [apiBase, setApiBase] = useState(cloud.apiBase);
   const [name, setName] = useState('');
   const [organizationName, setOrganizationName] = useState('');
@@ -46,7 +48,7 @@ export function CloudAccountCard({ cloud, onAuthenticate, onLogout, onPull, onPu
       <button disabled={busy} onClick={onPush}><CloudUpload /> Back up now</button>
       <button disabled={busy} onClick={onRefreshCampaigns}><RefreshCw /> Refresh campaigns</button>
     </div>
-    {cloud.message && <p className="cloud-message">{cloud.message}</p>}
+    {cloud.message && <p className={`cloud-message${cloud.messageKind === 'error' ? ' error' : ''}`} role={cloud.messageKind === 'error' ? 'alert' : 'status'}>{cloud.message}</p>}
     <button className="cloud-logout" disabled={busy} onClick={onLogout}><LogOut /> End cloud session</button>
     {cloud.session.organization.role === 'owner' && <button className="cloud-delete" disabled={busy} onClick={() => setDeleteOpen(true)}><Trash2 /> Delete cloud account</button>}
     <small className="cloud-session-note">The access token is kept only in this running app session. QRY does not silently upload local records.</small>
@@ -58,23 +60,26 @@ export function CloudAccountCard({ cloud, onAuthenticate, onLogout, onPull, onPu
       <span className="sheet-kicker">PERMANENT DELETION</span>
       <h2>Delete cloud account?</h2>
       <p>QRYverse will permanently remove this organization, members, cloud backups, hosted campaigns, redirects, and aggregate analytics. Local data already on this device stays here.</p>
-      <label className="field"><span>Type DELETE to confirm</span><div><Trash2 /><input autoFocus value={deletePhrase} onChange={(event) => setDeletePhrase(event.target.value)} autoComplete="off" /></div></label>
+      <label className="field"><span>Type DELETE to confirm (required)</span><div><Trash2 /><input autoFocus required value={deletePhrase} onChange={(event) => setDeletePhrase(event.target.value)} autoComplete="off" /></div></label>
       <button className="solid-button full danger-action" disabled={deletePhrase !== 'DELETE' || busy} onClick={async () => { await onDeleteAccount(); setDeleteOpen(false); setDeletePhrase(''); }}><Trash2 /> Permanently delete</button>
     </section>
   </div>}</>;
 
   const valid = email.trim() && password.length >= 10 && apiBase.trim() && (mode === 'login' || (name.trim() && organizationName.trim()));
+  const authErrorApplies = cloud.messageKind === 'error' && submittedMode === mode;
+  const authErrorId = cloud.message && authErrorApplies ? 'cloud-auth-error' : undefined;
+  const showMessage = cloud.messageKind !== 'error' || authErrorApplies;
   return <div className="cloud-account-card">
     <div className="cloud-account-head"><Cloud /><span><strong>QRYverse Cloud</strong><small>Accounts, hosted redirects, and cross-device backup</small></span></div>
     <div className="cloud-mode"><button className={mode === 'login' ? 'active' : ''} aria-pressed={mode === 'login'} onClick={() => setMode('login')}>Sign in</button><button className={mode === 'register' ? 'active' : ''} aria-pressed={mode === 'register'} onClick={() => setMode('register')}>Create account</button></div>
-    <div className="cloud-form">
-      {import.meta.env.DEV && <label><span>Service URL</span><input type="url" value={apiBase} onChange={(event) => setApiBase(event.target.value)} placeholder="https://cloud.qryverse.app" /></label>}
-      {mode === 'register' && <><label><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label><label><span>Organization</span><input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} /></label></>}
-      <label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>
-      <label><span>Password</span><input type="password" value={password} minLength={10} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} /></label>
+    <div className="cloud-form" role="group" aria-label={mode === 'login' ? 'Cloud sign-in details' : 'Cloud registration details'} aria-describedby={authErrorId}>
+      {import.meta.env.DEV && <label><span>Service URL (required)</span><input required type="url" value={apiBase} onChange={(event) => setApiBase(event.target.value)} placeholder="https://cloud.qryverse.app" /></label>}
+      {mode === 'register' && <><label><span>Your name (required)</span><input required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label><label><span>Organization (required)</span><input required value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} autoComplete="organization" /></label></>}
+      <label><span>Email (required)</span><input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>
+      <label><span>Password (required, at least 10 characters)</span><input required type="password" value={password} minLength={10} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} /></label>
     </div>
-    {cloud.message && <p className="cloud-message error">{cloud.message}</p>}
-    <button className="solid-button full" disabled={!valid || busy} onClick={async () => { await onAuthenticate(mode, { apiBase, name, email, password, organizationName }); setPassword(''); }}><LogIn /> {busy ? 'Connecting…' : mode === 'login' ? 'Sign in securely' : 'Create organization'}</button>
+    {cloud.message && showMessage && <p className={`cloud-message${cloud.messageKind === 'error' ? ' error' : ''}`} id={authErrorId} role={cloud.messageKind === 'error' ? 'alert' : 'status'}>{cloud.message}</p>}
+    <button className="solid-button full" disabled={!valid || busy} onClick={async () => { setSubmittedMode(mode); await onAuthenticate(mode, { apiBase, name, email, password, organizationName }); setPassword(''); }}><LogIn /> {busy ? 'Connecting…' : mode === 'login' ? 'Sign in securely' : 'Create organization'}</button>
     <small className="cloud-session-note">Use HTTPS in production. Local HTTP is accepted only for localhost development.</small>
   </div>;
 }

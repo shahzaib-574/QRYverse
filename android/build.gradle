@@ -22,6 +22,12 @@ allprojects {
         google()
         mavenCentral()
     }
+    configurations.configureEach {
+        resolutionStrategy {
+            failOnDynamicVersions()
+            failOnChangingVersions()
+        }
+    }
 }
 
 task clean(type: Delete) {

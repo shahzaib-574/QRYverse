@@ -5,6 +5,8 @@ dist-server/
 .env*
 !.env.example
 .idea/
+__pycache__/
+*.py[cod]
 *.apk
 *.aab
 *.jks

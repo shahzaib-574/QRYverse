@@ -19,6 +19,11 @@ def releaseSigningReady = [releaseKeystorePath, releaseStorePassword, releaseKey
 def validateReleaseConfiguration = {
     def releaseConfigurationErrors = []
     def buildProfileFile = file("src/main/assets/public/qry-build-profile.json")
+    def legalAssetFiles = [
+        file("src/main/assets/public/privacy.html"),
+        file("src/main/assets/public/terms.html"),
+        file("src/main/assets/public/account-deletion.html")
+    ]
 
     if (!releaseKeystorePath) releaseConfigurationErrors += "QRY_UPLOAD_KEYSTORE is required"
     if (!releaseStorePassword) releaseConfigurationErrors += "QRY_UPLOAD_STORE_PASSWORD is required"
@@ -42,6 +47,14 @@ def validateReleaseConfiguration = {
         releaseConfigurationErrors += "VITE_ADMOB_BANNER_ID must be a valid AdMob ad unit ID"
     } else if (admobBannerId.startsWith(googleTestAdmobPublisherPrefix)) {
         releaseConfigurationErrors += "VITE_ADMOB_BANNER_ID must not use Google's test publisher ID"
+    }
+
+    if (admobAppId ==~ /ca-app-pub-\d{16}~\d{10}/ && admobBannerId ==~ /ca-app-pub-\d{16}\/\d{10}/) {
+        def appPublisherPrefix = admobAppId.substring(0, admobAppId.indexOf('~'))
+        def bannerPublisherPrefix = admobBannerId.substring(0, admobBannerId.indexOf('/'))
+        if (appPublisherPrefix != bannerPublisherPrefix) {
+            releaseConfigurationErrors += "QRY_ADMOB_APP_ID and VITE_ADMOB_BANNER_ID must use the same AdMob publisher ID"
+        }
     }
 
     if (!"false".equalsIgnoreCase(admobTestMode)) {
@@ -78,6 +91,18 @@ def validateReleaseConfiguration = {
             }
         } catch (Exception ignored) {
             releaseConfigurationErrors += "qry-build-profile.json is invalid"
+        }
+    }
+
+
+    legalAssetFiles.each { legalFile ->
+        if (!legalFile.isFile()) {
+            releaseConfigurationErrors += "synchronized ${legalFile.name} is required"
+        } else {
+            def legalText = legalFile.getText('UTF-8')
+            if (legalText.contains('class="placeholder"') || legalText ==~ /(?s).*\[[A-Z][^\]]*(REQUIRED|LEGAL REVIEW)[^\]]*\].*/) {
+                releaseConfigurationErrors += "${legalFile.name} still contains release or legal-review placeholders"
+            }
         }
     }
 

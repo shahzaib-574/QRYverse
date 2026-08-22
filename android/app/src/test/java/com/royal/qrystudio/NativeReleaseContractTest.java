@@ -46,6 +46,17 @@ public class NativeReleaseContractTest {
         assertTrue(profile.matches("(?s).*\\\"admobTestMode\\\"\\s*:\\s*(true|false).*"));
     }
 
+    @Test
+    public void releaseGuardCoversLegalAndAdMobPublisherBoundaries() throws Exception {
+        String buildScript = read("build.gradle");
+
+        assertTrue(buildScript.contains("privacy.html"));
+        assertTrue(buildScript.contains("terms.html"));
+        assertTrue(buildScript.contains("account-deletion.html"));
+        assertTrue(buildScript.contains("class=\"placeholder\""));
+        assertTrue(buildScript.contains("must use the same AdMob publisher ID"));
+    }
+
     private static String read(String relativePath) throws Exception {
         Path path = Paths.get(relativePath);
         assertTrue("Missing synchronized release contract: " + path, Files.isRegularFile(path));

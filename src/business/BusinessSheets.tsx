@@ -75,7 +75,7 @@ export function TeamSheet({ state, onState, onClose, onNotice }: { state: Busine
   return <Sheet label="Team and permissions" onClose={onClose}>
     <span className="sheet-kicker">ACCESS</span><h2>Team and roles</h2><p className="sheet-description">Keep local responsibility notes for this device. Invitations and access enforcement are not part of the Play v1 profile.</p>
     <div className="team-list">{state.members.map((member) => <div key={member.id}><span className="team-avatar"><UserRound /></span><span><strong>{member.name}</strong><small>{member.email || 'This device'} · {member.role}</small></span><button disabled={member.role === 'owner'} onClick={() => remove(member)} aria-label={`Remove ${member.name}`}><Trash2 /></button></div>)}</div>
-    <div className="team-form"><label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Team member" /></label><label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" /></label><label><span>Role</span><select value={role} onChange={(event) => setRole(event.target.value as TeamRole)}><option value="manager">Manager</option><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label></div>
+    <div className="team-form"><label><span>Name (required)</span><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Team member" /></label><label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" /></label><label><span>Role</span><select value={role} onChange={(event) => setRole(event.target.value as TeamRole)}><option value="manager">Manager</option><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label></div>
     <button className="solid-button full" disabled={!name.trim()} onClick={add}><Plus /> Add member</button>
     <div className="cloud-boundary"><CloudOff /><span><strong>Local role notes only</strong><small>These assignments help plan responsibilities on this device; they do not send invitations or enforce access.</small></span></div>
   </Sheet>;
@@ -100,7 +100,16 @@ export function AutomationsSheet({ state, onState, onClose, onNotice }: { state:
   };
   return <Sheet label="Alerts and integrations" onClose={onClose}>
     <span className="sheet-kicker">AUTOMATION</span><h2>Alerts and integrations</h2><p className="sheet-description">Rules run on-device whenever QRY opens or data changes.</p>
-    <div className="automation-list">{state.automations.map((rule) => <label key={rule.id}><span><strong>{labels[rule.id][0]}</strong><small>{labels[rule.id][1]}</small></span>{['low_stock', 'due_soon'].includes(rule.id) && <input aria-label={`${labels[rule.id][0]} threshold`} type="number" min="0" max="365" value={rule.threshold} onChange={(event) => updateRule(rule.id, { threshold: Math.max(0, Number(event.target.value) || 0) })} />}<input className="switch-input" type="checkbox" checked={rule.enabled} onChange={(event) => updateRule(rule.id, { enabled: event.target.checked })} /><i /></label>)}</div>
+    <div className="automation-list">{state.automations.map((rule) => (
+      <div className="automation-rule" key={rule.id}>
+        <span><strong>{labels[rule.id][0]}</strong><small>{labels[rule.id][1]}</small></span>
+        {['low_stock', 'due_soon'].includes(rule.id) && <input aria-label={`${labels[rule.id][0]} threshold`} type="number" min="0" max="365" value={rule.threshold} onChange={(event) => updateRule(rule.id, { threshold: Math.max(0, Number(event.target.value) || 0) })} />}
+        <label className="automation-switch">
+          <input className="switch-input" type="checkbox" role="switch" aria-label={`${labels[rule.id][0]} automation`} checked={rule.enabled} onChange={(event) => updateRule(rule.id, { enabled: event.target.checked })} />
+          <i aria-hidden="true" />
+        </label>
+      </div>
+    ))}</div>
     <div className="integration-fields"><div className="section-title"><Plug /><span><strong>Connection endpoints</strong><small>Optional infrastructure for Business deployments</small></span></div><label><span>Webhook URL</span><input type="url" value={state.integrations.webhookUrl} onChange={(event) => updateIntegration('webhookUrl', event.target.value.trim())} placeholder="https://automation.example/hooks/qry" /></label><button disabled={!state.integrations.webhookUrl} onClick={testWebhook}><Webhook /> Send test event</button><label><span>Sync API endpoint</span><input type="url" value={state.integrations.syncEndpoint} onChange={(event) => updateIntegration('syncEndpoint', event.target.value.trim())} placeholder="https://api.example/qry/sync" /></label><label><span>Custom domain</span><input value={state.integrations.customDomain} onChange={(event) => updateIntegration('customDomain', event.target.value.trim())} placeholder="go.example.com" /></label></div>
     <div className="cloud-boundary"><ShieldCheck /><span><strong>Integration endpoints stay manual</strong><small>QRYverse contacts these configured endpoints only when you explicitly test them; mobile ads and consent use the separate behavior described in the privacy policy.</small></span></div>
   </Sheet>;

@@ -19,7 +19,7 @@ body {
 
 a { color: #286452; text-underline-offset: .2em; }
 a:hover { color: #173f35; }
-a:focus-visible { outline: 3px solid #e77843; outline-offset: 3px; border-radius: 4px; }
+a:focus-visible { outline: 3px solid #9b3d1a; outline-offset: 3px; border-radius: 4px; }
 
 .site-header {
   position: sticky;
@@ -49,13 +49,13 @@ nav a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 
 nav a[aria-current="page"] { color: #173f35; background: #e3eae4; box-shadow: inset 2px 2px 5px rgba(52, 78, 68, .12), inset -2px -2px 5px #fff; }
 
 main { padding-block: 64px 80px; }
-.eyebrow { margin: 0 0 10px; color: #d6673b; font-size: .76rem; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.eyebrow { margin: 0 0 10px; color: #9b3d1a; font-size: .76rem; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
 h1, h2, h3 { color: #173f35; line-height: 1.2; letter-spacing: -.025em; }
 h1 { max-width: 680px; margin: 0; font-size: clamp(2.15rem, 7vw, 3.55rem); }
 h2 { margin: 2.5rem 0 .75rem; font-size: 1.45rem; }
 h3 { margin: 1.6rem 0 .5rem; font-size: 1.05rem; }
 .lede { max-width: 650px; margin: 18px 0 0; color: #51665e; font-size: 1.08rem; }
-.meta { margin: 16px 0 0; color: #70817a; font-size: .88rem; }
+.meta { margin: 16px 0 0; color: #566b62; font-size: .88rem; }
 
 .notice {
   margin: 30px 0;
@@ -84,7 +84,7 @@ li + li { margin-top: .45rem; }
 .small { font-size: .88rem; }
 
 .site-footer { border-top: 1px solid rgba(62, 92, 80, .12); }
-.footer-inner { padding-block: 28px 42px; color: #70817a; font-size: .84rem; }
+.footer-inner { padding-block: 28px 42px; color: #566b62; font-size: .84rem; }
 .footer-inner p { margin: 0; }
 
 @media (max-width: 640px) {

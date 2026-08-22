@@ -72,7 +72,7 @@ export function CsvImportSheet({ collection, recordLimit, onClose, onApply, onNo
   return (
     <Sheet label={t('Import a CSV')} onClose={onClose} className="deployment-sheet">
       <span className="sheet-kicker">{t('Bulk operations').toUpperCase()}</span><h2>{t('Import a CSV')}</h2><p className="sheet-description">{t('Map your columns, review the result, then import locally.')}</p>
-      {!data ? <><FileDrop accept=".csv,text/csv" icon={<FileSpreadsheet />} title={t('Choose a CSV file')} detail={t('Header row required · Up to 5,000 rows')} browseLabel={t('Browse files')} onChange={chooseFile} /><a className="template-download" href="/templates/qry-track-import-template.csv" download>{t('Download CSV template')}</a></> : <>
+      {!data ? <><FileDrop accept=".csv,text/csv" icon={<FileSpreadsheet />} title={t('Choose a CSV file')} detail={t('Header row required · Up to 5,000 rows')} browseLabel={t('Browse files')} onChange={chooseFile} errorId="csv-import-error" invalid={Boolean(error)} /><a className="template-download" href="/templates/qry-track-import-template.csv" download>{t('Download CSV template')}</a></> : <>
         <div className="import-summary"><FileSpreadsheet /><span><strong>{data.rows.length} {t('rows found')}</strong><small>{data.headers.length} {t('columns')} · {remaining} {t('record spaces available')}</small></span><button onClick={() => setData(undefined)}>{t('Change')}</button></div>
         <div className="mapping-grid">
           {(['name', 'code', 'location', 'quantity', 'notes'] as ImportField[]).map((field) => <label key={field}><span>{t(field[0].toUpperCase() + field.slice(1))}{field === 'name' ? ' *' : ''}</span><select value={mapping[field] ?? ''} onChange={(event) => setField(field, event.target.value)}><option value="">{t('Not imported')}</option>{data.headers.map((header, index) => <option value={index} key={`${header}-${index}`}>{header}</option>)}</select></label>)}
@@ -80,7 +80,7 @@ export function CsvImportSheet({ collection, recordLimit, onClose, onApply, onNo
         <div className="duplicate-choice"><span>{t('When a code already exists')}</span><div><button className={mode === 'skip' ? 'active' : ''} aria-pressed={mode === 'skip'} onClick={() => setMode('skip')}>{t('Skip row')}</button><button className={mode === 'replace' ? 'active' : ''} aria-pressed={mode === 'replace'} onClick={() => setMode('replace')}>{t('Update record')}</button></div></div>
         {preview && <div className="preview-box"><div><strong>{accepted.length} {t('ready')}</strong><span>{preview.skipped} {t('skipped')}{overLimit ? ` · ${overLimit} ${t('over workspace limit')}` : ''}</span></div>{preview.errors.length > 0 && <ul>{preview.errors.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul>}</div>}
       </>}
-      {error && <p className="deployment-error">{error}</p>}
+      {error && <p className="deployment-error" id="csv-import-error" role="alert">{error}</p>}
       <button className="solid-button full" disabled={!preview || accepted.length === 0} onClick={apply}>{t('Import records')}{accepted.length ? ` (${accepted.length})` : ''} <ChevronRight /></button>
     </Sheet>
   );
@@ -122,14 +122,14 @@ export function RestoreSheet({ local, onClose, onApply, onNotice }: {
   return (
     <Sheet label={t('Restore a backup')} onClose={onClose} className="deployment-sheet">
       <span className="sheet-kicker">{t('Device recovery').toUpperCase()}</span><h2>{t('Restore a backup')}</h2><p className="sheet-description">{t('Nothing changes until you confirm how to restore it.')}</p>
-      {!preview ? <FileDrop accept=".json,application/json" icon={<FileJson />} title={t('Choose a QRY JSON backup')} detail={t('The file is validated before restore')} browseLabel={t('Browse files')} onChange={chooseFile} /> : <>
+      {!preview ? <FileDrop accept=".json,application/json" icon={<FileJson />} title={t('Choose a QRY JSON backup')} detail={t('The file is validated before restore')} browseLabel={t('Browse files')} onChange={chooseFile} errorId="restore-backup-error" invalid={Boolean(error)} /> : <>
         <div className="restore-summary"><Check /><span><strong>{preview.collections.length} {t('workspaces')}</strong><small>{preview.recordCount} {t('records')} · {preview.warnings.length ? `${preview.warnings.length} ${t('warnings')}` : t('Validation passed')}</small></span></div>
         <div className="restore-options">
           <button className={mode === 'merge' ? 'active' : ''} aria-pressed={mode === 'merge'} onClick={() => setMode('merge')}><strong>{t('Merge safely')}</strong><small>{t('Keep local data and update matching IDs')}</small></button>
           <button className={mode === 'replace' ? 'active danger' : ''} aria-pressed={mode === 'replace'} onClick={() => setMode('replace')}><strong>{t('Replace this device')}</strong><small>{t('Use only the workspaces in this backup')}</small></button>
         </div>
       </>}
-      {error && <p className="deployment-error">{error}</p>}
+      {error && <p className="deployment-error" id="restore-backup-error" role="alert">{error}</p>}
       <button className={`solid-button full ${mode === 'replace' ? 'danger-action' : ''}`} disabled={!preview} onClick={restore}>{t(mode === 'merge' ? 'Merge backup' : 'Replace local data')} <ChevronRight /></button>
     </Sheet>
   );
@@ -183,8 +183,8 @@ export function LabelStudioSheet({ collection, onClose, onNotice }: {
   );
 }
 
-function FileDrop({ accept, icon, title, detail, browseLabel, onChange }: { accept: string; icon: React.ReactNode; title: string; detail: string; browseLabel: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void }) {
-  return <label className="deployment-drop">{icon}<strong>{title}</strong><small>{detail}</small><span><Upload /> {browseLabel}</span><input type="file" accept={accept} onChange={onChange} /></label>;
+function FileDrop({ accept, icon, title, detail, browseLabel, onChange, errorId, invalid = false }: { accept: string; icon: React.ReactNode; title: string; detail: string; browseLabel: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void; errorId?: string; invalid?: boolean }) {
+  return <label className={`deployment-drop ${invalid ? 'invalid' : ''}`}>{icon}<strong>{title}</strong><small>{detail}</small><span><Upload /> {browseLabel}</span><input type="file" accept={accept} aria-invalid={invalid} aria-describedby={invalid ? errorId : undefined} onChange={onChange} /></label>;
 }
 
 function Sheet({ label, onClose, className = '', children }: { label: string; onClose: () => void; className?: string; children: React.ReactNode }) {

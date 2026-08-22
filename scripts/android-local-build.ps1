@@ -6,14 +6,30 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $toolsRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot '.tools'))
-$sdkRoot = Join-Path $toolsRoot 'android-sdk'
-$jdkMatches = @(Get-ChildItem -LiteralPath (Join-Path $toolsRoot 'jdk21') -Filter javac.exe -Recurse -ErrorAction Stop | Where-Object { $_.FullName -match '\\bin\\javac\.exe$' })
+$workspaceJdk = Join-Path $toolsRoot 'jdk21'
+$workspaceSdk = Join-Path $toolsRoot 'android-sdk'
 
-if ($jdkMatches.Count -ne 1) { throw "Expected one workspace JDK, found $($jdkMatches.Count)." }
-$jdkRoot = Split-Path -Parent (Split-Path -Parent $jdkMatches[0].FullName)
-if (-not (Test-Path -LiteralPath (Join-Path $sdkRoot 'platforms\android-36\android.jar'))) { throw 'Workspace Android API 36 is not installed.' }
-if (-not $jdkRoot.StartsWith($toolsRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected JDK path.' }
-if (-not $sdkRoot.StartsWith($toolsRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected Android SDK path.' }
+$jdkRoot = $null
+if (Test-Path -LiteralPath $workspaceJdk -PathType Container) {
+  $jdkMatches = @(Get-ChildItem -LiteralPath $workspaceJdk -Filter javac.exe -Recurse -ErrorAction Stop | Where-Object { $_.FullName -match '\\bin\\javac\.exe$' })
+  if ($jdkMatches.Count -ne 1) { throw "Expected one workspace JDK, found $($jdkMatches.Count)." }
+  $jdkRoot = Split-Path -Parent (Split-Path -Parent $jdkMatches[0].FullName)
+} elseif ($env:JAVA_HOME) {
+  $candidateJdk = [System.IO.Path]::GetFullPath($env:JAVA_HOME)
+  if (Test-Path -LiteralPath (Join-Path $candidateJdk 'bin\javac.exe') -PathType Leaf) { $jdkRoot = $candidateJdk }
+}
+if (-not $jdkRoot) { throw 'JDK 21 was not found in .tools or JAVA_HOME.' }
+$jdkRelease = Join-Path $jdkRoot 'release'
+if (-not (Test-Path -LiteralPath $jdkRelease -PathType Leaf) -or (Get-Content -LiteralPath $jdkRelease -Raw) -notmatch '(?m)^JAVA_VERSION="21(?:\.|\")') {
+  throw 'QRYverse Android verification requires JDK 21.'
+}
+
+$sdkRoot = @($workspaceSdk, $env:ANDROID_SDK_ROOT, $env:ANDROID_HOME) |
+  Where-Object { $_ } |
+  ForEach-Object { [System.IO.Path]::GetFullPath($_) } |
+  Where-Object { Test-Path -LiteralPath (Join-Path $_ 'platforms\android-36\android.jar') -PathType Leaf } |
+  Select-Object -First 1
+if (-not $sdkRoot) { throw 'Android SDK API 36 was not found in .tools, ANDROID_SDK_ROOT, or ANDROID_HOME.' }
 
 $env:JAVA_HOME = $jdkRoot
 $env:ANDROID_HOME = $sdkRoot

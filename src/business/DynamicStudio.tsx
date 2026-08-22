@@ -105,6 +105,7 @@ function CampaignSheet({ initial, hostedBaseUrl, onClose, onCreate, onNotice }: 
     return () => { active = false; };
   }, [payload, color]);
   const safeDestination = normaliseHttpUrl(destination);
+  const destinationError = destination.trim() && !safeDestination ? 'Enter a valid website address.' : '';
   const valid = Boolean(name.trim() && safeDestination);
   const create = () => onCreate({ id, name: name.trim(), destination: safeDestination, slug: resolvedSlug, color, active: initial?.active ?? true, scans: initial?.scans ?? [], localTotalScans: initial?.localTotalScans ?? initial?.scans.length ?? 0, createdAt: initial?.createdAt ?? Date.now(), hosted: initial?.hosted });
   return (
@@ -117,8 +118,8 @@ function CampaignSheet({ initial, hostedBaseUrl, onClose, onCreate, onNotice }: 
         <h2>{initial ? 'Edit campaign' : 'Create a campaign'}</h2>
         <p>Its QRY payload stays permanent while you edit the destination.</p>
         <div className="campaign-form">
-          <label><span>Campaign name</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Summer menu" /></label>
-          <label><span>Destination</span><div><Globe2 /><input value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="https://example.com/menu" /></div></label>
+          <label><span>Campaign name (required)</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} placeholder="Summer menu" /></label>
+          <label><span>Destination (required)</span><div className={destinationError ? 'field-invalid' : undefined}><Globe2 /><input required inputMode="url" value={destination} aria-invalid={Boolean(destinationError)} aria-describedby="campaign-destination-help" onChange={(event) => setDestination(event.target.value)} placeholder="https://example.com/menu" /></div><small id="campaign-destination-help" className={destinationError ? 'campaign-field-error' : 'campaign-field-help'} role={destinationError ? 'alert' : undefined}>{destinationError || 'Enter a website address; https:// is added when omitted.'}</small></label>
           <label><span>Short slug</span><div><Link2 /><input value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="summer-menu" /></div></label>
         </div>
         <div className="campaign-preview">

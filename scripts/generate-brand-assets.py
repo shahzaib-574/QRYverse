@@ -103,10 +103,10 @@ def render_splash(size: tuple[int, int]) -> Image.Image:
 
 
 def render_play_icon(size: int = 512) -> Image.Image:
-    """Render a full-bleed Play icon; Google Play applies the outer mask."""
+    """Render a 32-bit RGBA full-bleed Play icon; Google Play applies the outer mask."""
     scale = 4
     edge = size * scale
-    canvas = Image.new("RGB", (edge, edge), GREEN)
+    canvas = Image.new("RGBA", (edge, edge), GREEN)
     draw = ImageDraw.Draw(canvas)
     mark_pad = int(edge * .23)
     qr_mark(draw, (mark_pad, mark_pad, edge - mark_pad, edge - mark_pad))

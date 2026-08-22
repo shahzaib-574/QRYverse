@@ -18,12 +18,18 @@ Build and re-run the web checks with:
 ```powershell
 npm run test
 npm run lint
+npm run server:typecheck -- --noEmit
+npm run server:build
+npm run build
+python scripts/prepare-play-screenshots.py
 npm audit --omit=dev
 npm run android:local-clean
 npm run android:local-verify
 ```
 
 `android:local-verify` builds `app-debug.apk`, reports Android lint issues, runs the JVM manifest/build-profile contract tests, and compiles `app-debug-androidTest.apk`. The instrumentation suite verifies installed permissions, app metadata, deep-link resolution, bundled release metadata, and packaged legal pages when run on a device or emulator.
+
+The same checks run on pushes to `main` and pull requests through `.github/workflows/ci.yml`. Gradle uses an official distribution checksum, rejects dynamic/changing dependency resolution, and pins the effective Google Mobile Ads and UMP versions; re-run dependency insight on the final release graph before upload.
 
 Install on an attached Android device with USB debugging enabled:
 
@@ -37,8 +43,9 @@ Then run the instrumentation suite and test camera permission grant/denial, live
 
 ## Required before Play upload
 
-1. Create and securely back up a release upload keystore. Never commit it or its passwords.
-2. Configure Gradle release signing from local or CI secrets and produce an Android App Bundle (`.aab`). The build now fails closed instead of producing an unsigned release when these variables are absent:
+1. Complete [Google Play developer identity verification and package registration](https://support.google.com/googleplay/android-developer/answer/16984799?hl=en) for `com.royal.qrystudio` before the September 30, 2026 deadline.
+2. Create and securely back up a release upload keystore. Never commit it or its passwords.
+3. Configure Gradle release signing from local or CI secrets and produce an Android App Bundle (`.aab`). The build now fails closed instead of producing an unsigned release when these variables are absent:
 
    ```powershell
    $env:QRY_UPLOAD_KEYSTORE = "C:\secure\qryverse-upload.jks"
@@ -47,13 +54,13 @@ Then run the instrumentation suite and test camera permission grant/denial, live
    $env:QRY_UPLOAD_KEY_PASSWORD = "..."
    npm run android:local-bundle
    ```
-3. Increase `versionCode` for every Play upload and set the intended public `versionName`.
-4. Replace the AdMob test App ID/banner with the production QRYverse IDs, configure UMP messages and `app-ads.txt`, then verify placement and consent on hardware. See `ADMOB_RELEASE_SETUP.md`.
-5. Add a controlled HTTPS domain plus Digital Asset Links only if verified public App Links are part of launch; the placeholder host was intentionally removed.
-6. Replace every legal/contact/retention placeholder, publish privacy/terms/local-data deletion pages at stable HTTPS URLs, and complete Play Data safety, content rating, app access, target audience, ads, Advertising ID, and store-listing declarations based on the final AAB. The publisher must confirm **18 and over only** in Google Play and compatible AdMob console declarations; because the app has no age gate or reliable user-age signal, keep the SDK child-directed and under-age-of-consent request tags unspecified.
-7. Verify the merged launch manifest has no `com.android.vending.BILLING` permission, billing service intent, RevenueCat component, or Play Billing metadata.
-8. Upload to Play internal testing, validate UMP, test-account access, and the pre-launch report, then promote through closed/open testing as appropriate.
-9. Confirm backup/restore, local-data deletion and clearing, crash handling, TalkBack, 200% font scaling, reduced motion, offline behavior, camera permission paths, and rotation on physical devices.
+4. Increase `versionCode` for every Play upload and set the intended public `versionName`.
+5. Replace the AdMob test App ID/banner with the production QRYverse IDs, configure UMP messages and `app-ads.txt`, then verify placement and consent on hardware. See `ADMOB_RELEASE_SETUP.md`.
+6. Add a controlled HTTPS domain plus Digital Asset Links only if verified public App Links are part of launch; the placeholder host was intentionally removed.
+7. Replace every legal/contact/retention placeholder, publish privacy/terms/local-data deletion pages at stable HTTPS URLs, and complete Play Data safety, content rating, app access, target audience, ads, Advertising ID, and store-listing declarations based on the final AAB. The publisher must confirm **18 and over only** in Google Play and compatible AdMob console declarations; because the app has no age gate or reliable user-age signal, keep the SDK child-directed and under-age-of-consent request tags unspecified.
+8. Verify the merged launch manifest has no `com.android.vending.BILLING` permission, billing service intent, RevenueCat component, or Play Billing metadata.
+9. Upload to Play internal testing, validate UMP, test-account access, and the pre-launch report, then promote through closed/open testing as appropriate.
+10. Confirm backup/restore, local-data deletion and clearing, crash handling, TalkBack, 200% font scaling, reduced motion, offline behavior, camera permission paths, and rotation on physical devices.
 
 The `android:local-bundle` command prepares a release bundle, but it is not a substitute for configuring and verifying a private release signing identity.
 

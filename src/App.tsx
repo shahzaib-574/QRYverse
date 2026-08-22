@@ -161,8 +161,8 @@ export default function App() {
     else document.documentElement.dataset.theme = preferences.theme;
   }, [preferences.theme]);
   useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(undefined), typeof toast === 'string' ? 3200 : 6000);
+    if (!toast || typeof toast !== 'string') return;
+    const timer = window.setTimeout(() => setToast(undefined), 3200);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -184,6 +184,15 @@ export default function App() {
       tabHistoryRef.current.push(current);
       if (tabHistoryRef.current.length > 12) tabHistoryRef.current.shift();
       return next;
+    });
+  };
+
+  const restoreCurrentPageFocus = () => {
+    window.requestAnimationFrame(() => {
+      const heading = document.querySelector<HTMLElement>('.main-content .screen h1');
+      if (!heading) return;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
     });
   };
 
@@ -319,10 +328,10 @@ export default function App() {
   const authenticateCloud = async (mode: 'login' | 'register', input: { apiBase: string; name: string; email: string; password: string; organizationName: string }) => {
     if (!cloudAccountAvailable()) {
       cloudClientRef.current = undefined;
-      setCloud({ status: 'disconnected', apiBase: '', remoteVersion: 0, remoteUpdatedAt: 0, message: 'Cloud is not enabled in this release. Offline features remain available.' });
+      setCloud({ status: 'disconnected', apiBase: '', remoteVersion: 0, remoteUpdatedAt: 0, message: 'Cloud is not enabled in this release. Offline features remain available.', messageKind: 'status' });
       return;
     }
-    setCloud((current) => ({ ...current, status: 'working', apiBase: input.apiBase, message: undefined }));
+    setCloud((current) => ({ ...current, status: 'working', apiBase: input.apiBase, message: undefined, messageKind: undefined }));
     try {
       const client = new CloudClient(input.apiBase);
       const session = mode === 'register' ? await client.register(input) : await client.login(input.email, input.password);
@@ -332,83 +341,83 @@ export default function App() {
       const remote = await client.getSync<SyncEnvelope>();
       const hosted = await client.listCampaigns();
       updateBusiness((current) => mergeHostedCampaigns(current, hosted));
-      setCloud({ status: 'connected', apiBase: client.apiBase, session, remoteVersion: remote.version, remoteUpdatedAt: remote.updatedAt, message: remote.version ? 'Cloud backup found. Pull it explicitly to replace this device data.' : 'Connected. This device has not been backed up yet.' });
+      setCloud({ status: 'connected', apiBase: client.apiBase, session, remoteVersion: remote.version, remoteUpdatedAt: remote.updatedAt, message: remote.version ? 'Cloud backup found. Pull it explicitly to replace this device data.' : 'Connected. This device has not been backed up yet.', messageKind: 'status' });
     } catch (error) {
       cloudClientRef.current = undefined;
-      setCloud((current) => ({ ...current, status: 'disconnected', session: undefined, message: cloudErrorMessage(error) }));
+      setCloud((current) => ({ ...current, status: 'disconnected', session: undefined, message: cloudErrorMessage(error), messageKind: 'error' }));
     }
   };
 
   const logoutCloud = async () => {
-    setCloud((current) => ({ ...current, status: 'working', message: undefined }));
+    setCloud((current) => ({ ...current, status: 'working', message: undefined, messageKind: undefined }));
     try { await cloudClientRef.current?.logout(); } catch { /* The local session is still cleared. */ }
     cloudClientRef.current = undefined;
-    setCloud((current) => ({ status: 'disconnected', apiBase: current.apiBase, remoteVersion: 0, remoteUpdatedAt: 0, message: 'Cloud session ended. Local data remains on this device.' }));
+    setCloud((current) => ({ status: 'disconnected', apiBase: current.apiBase, remoteVersion: 0, remoteUpdatedAt: 0, message: 'Cloud session ended. Local data remains on this device.', messageKind: 'status' }));
   };
 
   const pushCloud = async () => {
     const client = cloudClientRef.current;
     if (!client || !cloud.session) return;
-    setCloud((current) => ({ ...current, status: 'working', message: undefined }));
+    setCloud((current) => ({ ...current, status: 'working', message: undefined, messageKind: undefined }));
     try {
       const adapter = new RemoteSyncAdapter(client, cloud.remoteVersion);
       const result = await adapter.push(makeSyncEnvelope(collections, business));
       if (result.status === 'conflict') {
-        setCloud((current) => ({ ...current, status: 'connected', remoteVersion: result.remoteVersion ?? adapter.remoteVersion, message: 'Cloud data changed elsewhere. Pull it before attempting another backup.' }));
+        setCloud((current) => ({ ...current, status: 'connected', remoteVersion: result.remoteVersion ?? adapter.remoteVersion, message: 'Cloud data changed elsewhere. Pull it before attempting another backup.', messageKind: 'status' }));
         return;
       }
-      setCloud((current) => ({ ...current, status: 'connected', remoteVersion: result.remoteVersion ?? adapter.remoteVersion, remoteUpdatedAt: Date.now(), message: 'This device snapshot is now backed up.' }));
-    } catch (error) { setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error) })); }
+      setCloud((current) => ({ ...current, status: 'connected', remoteVersion: result.remoteVersion ?? adapter.remoteVersion, remoteUpdatedAt: Date.now(), message: 'This device snapshot is now backed up.', messageKind: 'status' }));
+    } catch (error) { setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error), messageKind: 'error' })); }
   };
 
   const pullCloud = async () => {
     const client = cloudClientRef.current;
     if (!client || !cloud.session) return;
     if (!window.confirm('Replace the local QRYverse business snapshot with the latest cloud backup? Local changes that are not backed up will be lost.')) return;
-    setCloud((current) => ({ ...current, status: 'working', message: undefined }));
+    setCloud((current) => ({ ...current, status: 'working', message: undefined, messageKind: undefined }));
     try {
       const adapter = new RemoteSyncAdapter(client, cloud.remoteVersion);
       const result = await adapter.pull(makeSyncEnvelope(collections, business));
       if (adapter.remoteVersion === 0) {
-        setCloud((current) => ({ ...current, status: 'connected', message: 'No cloud backup exists yet. Use Back up now to create one.' }));
+        setCloud((current) => ({ ...current, status: 'connected', message: 'No cloud backup exists yet. Use Back up now to create one.', messageKind: 'status' }));
         return;
       }
       const previousCollections = collections;
       if (!updateCollections(result.envelope.collections)) {
-        setCloud((current) => ({ ...current, status: 'connected', message: 'The cloud backup was not applied because it exceeds safe local storage.' }));
+        setCloud((current) => ({ ...current, status: 'connected', message: 'The cloud backup was not applied because it exceeds safe local storage.', messageKind: 'error' }));
         return;
       }
       if (!updateBusiness(result.envelope.business)) {
         updateCollections(previousCollections);
-        setCloud((current) => ({ ...current, status: 'connected', message: 'The cloud backup was not applied because its business data exceeds safe local storage.' }));
+        setCloud((current) => ({ ...current, status: 'connected', message: 'The cloud backup was not applied because its business data exceeds safe local storage.', messageKind: 'error' }));
         return;
       }
-      setCloud((current) => ({ ...current, status: 'connected', remoteVersion: adapter.remoteVersion, remoteUpdatedAt: result.envelope.updatedAt, message: 'Cloud data was applied to this device.' }));
-    } catch (error) { setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error) })); }
+      setCloud((current) => ({ ...current, status: 'connected', remoteVersion: adapter.remoteVersion, remoteUpdatedAt: result.envelope.updatedAt, message: 'Cloud data was applied to this device.', messageKind: 'status' }));
+    } catch (error) { setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error), messageKind: 'error' })); }
   };
 
   const refreshHostedCampaigns = async () => {
     const client = cloudClientRef.current;
     if (!client || !cloud.session) return;
-    setCloud((current) => ({ ...current, status: 'working', message: undefined }));
+    setCloud((current) => ({ ...current, status: 'working', message: undefined, messageKind: undefined }));
     try {
       const hosted = await client.listCampaigns();
       updateBusiness((current) => mergeHostedCampaigns(current, hosted));
-      setCloud((current) => ({ ...current, status: 'connected', message: `Refreshed ${hosted.length} hosted campaign${hosted.length === 1 ? '' : 's'}.` }));
-    } catch (error) { setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error) })); }
+      setCloud((current) => ({ ...current, status: 'connected', message: `Refreshed ${hosted.length} hosted campaign${hosted.length === 1 ? '' : 's'}.`, messageKind: 'status' }));
+    } catch (error) { setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error), messageKind: 'error' })); }
   };
 
   const deleteCloudAccount = async () => {
     const client = cloudClientRef.current;
     if (!client || !cloud.session) return;
-    setCloud((current) => ({ ...current, status: 'working', message: undefined }));
+    setCloud((current) => ({ ...current, status: 'working', message: undefined, messageKind: undefined }));
     try {
       await client.deleteAccount();
       cloudClientRef.current = undefined;
-      setCloud((current) => ({ status: 'disconnected', apiBase: current.apiBase, remoteVersion: 0, remoteUpdatedAt: 0, message: 'Cloud account and hosted data were permanently deleted. Local device data remains.' }));
+      setCloud((current) => ({ status: 'disconnected', apiBase: current.apiBase, remoteVersion: 0, remoteUpdatedAt: 0, message: 'Cloud account and hosted data were permanently deleted. Local device data remains.', messageKind: 'status' }));
       setToast('Cloud account deleted');
     } catch (error) {
-      setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error) }));
+      setCloud((current) => ({ ...current, status: 'connected', message: cloudErrorMessage(error), messageKind: 'error' }));
       throw error;
     }
   };
@@ -446,7 +455,12 @@ export default function App() {
           <Logo />
           <span>QRY</span>
         </button>
-        <button className="plan-pill" onClick={() => navigateTo('studio')} aria-label="Open QRY Studio and settings">
+        <button
+          className="plan-pill"
+          onClick={() => navigateTo('studio')}
+          aria-label="Open QRY Studio and settings"
+          aria-current={tab === 'studio' ? 'page' : undefined}
+        >
           <Sparkles size={14} /> {billing.pro ? 'Studio Pro' : 'Studio'}
         </button>
       </header>
@@ -565,7 +579,15 @@ export default function App() {
       )}
       {toast && <div className="toast" role="status" aria-live="polite">
         <span>{typeof toast === 'string' ? toast : toast.message}</span>
-        {typeof toast !== 'string' && <button onClick={toast.onAction}>{toast.actionLabel}</button>}
+        {typeof toast !== 'string' && <>
+          <button className="toast-action" onClick={() => {
+            const currentToast = toast;
+            toast.onAction();
+            setToast((value) => value === currentToast ? undefined : value);
+            restoreCurrentPageFocus();
+          }}>{toast.actionLabel}</button>
+          <button className="toast-dismiss" onClick={() => { setToast(undefined); restoreCurrentPageFocus(); }} aria-label="Dismiss notification"><X /></button>
+        </>}
       </div>}
     </div>
   );
@@ -677,18 +699,19 @@ function Create({ initialMode, onModeChange, onSaved, onNotice }: { initialMode:
 
       <div className="creator-card">
         <div className="form-stack">
-          {mode === 'link' && <Field label={t('Website address')} value={fields.url ?? ''} placeholder="yourwebsite.com" onChange={(v) => update('url', v)} icon={<Globe2 />} />}
-          {mode === 'text' && <TextField label={t('Text message')} value={fields.text ?? ''} placeholder="Type anything you want to share…" onChange={(v) => update('text', v)} />}
+          {mode === 'link' && <Field label={t('Website address')} value={fields.url ?? ''} placeholder="yourwebsite.com" onChange={(v) => update('url', v)} icon={<Globe2 />} inputMode="url" autoComplete="url" required invalid={Boolean(fields.url?.trim()) && !payload} describedBy={!payload ? 'creator-validation' : undefined} />}
+          {mode === 'text' && <TextField label={t('Text message')} value={fields.text ?? ''} placeholder="Type anything you want to share…" onChange={(v) => update('text', v)} required invalid={Boolean(fields.text) && !payload} describedBy={!payload ? 'creator-validation' : undefined} />}
           {mode === 'wifi' && <>
-            <Field label={t('Network name')} value={fields.ssid ?? ''} placeholder="Office Wi-Fi" onChange={(v) => update('ssid', v)} icon={<Wifi />} />
+            <Field label={t('Network name')} value={fields.ssid ?? ''} placeholder="Office Wi-Fi" onChange={(v) => update('ssid', v)} icon={<Wifi />} required invalid={Boolean(fields.ssid) && !payload} describedBy={!payload ? 'creator-validation' : undefined} />
             <Field label={t('Password')} value={fields.password ?? ''} placeholder="Wi-Fi password" onChange={(v) => update('password', v)} icon={<LockKeyhole />} type="password" />
             <label className="select-field"><span>{t('Security')}</span><select value={fields.security} onChange={(e) => update('security', e.target.value)}><option>WPA</option><option>WEP</option><option value="nopass">No password</option></select></label>
           </>}
-          {mode === 'contact' && <>
-            <Field label={t('Full name')} value={fields.name ?? ''} placeholder="Your name" onChange={(v) => update('name', v)} icon={<UserRound />} />
-            <Field label={t('Phone')} value={fields.phone ?? ''} placeholder="+1 555 0123" onChange={(v) => update('phone', v)} icon={<Copy />} type="tel" />
-            <Field label={t('Email')} value={fields.email ?? ''} placeholder="hello@example.com" onChange={(v) => update('email', v)} icon={<Mail />} type="email" />
-          </>}
+          {mode === 'contact' && <div className="contact-field-group" role="group" aria-label="Contact details; at least one required" aria-invalid={!payload} aria-describedby={!payload ? 'creator-validation' : undefined}>
+            <p className="field-group-label">Contact details · at least one required</p>
+            <Field label={t('Full name')} value={fields.name ?? ''} placeholder="Your name" onChange={(v) => update('name', v)} icon={<UserRound />} autoComplete="name" />
+            <Field label={t('Phone')} value={fields.phone ?? ''} placeholder="+1 555 0123" onChange={(v) => update('phone', v)} icon={<Copy />} type="tel" autoComplete="tel" />
+            <Field label={t('Email')} value={fields.email ?? ''} placeholder="hello@example.com" onChange={(v) => update('email', v)} icon={<Mail />} type="email" autoComplete="email" />
+          </div>}
         </div>
 
         <div className="qr-preview-wrap">
@@ -713,7 +736,7 @@ function Create({ initialMode, onModeChange, onSaved, onNotice }: { initialMode:
         }}><Download /> {t('Export')}</button>
         <button className="solid-button" disabled={!dataUrl} onClick={() => onSaved(payload)}><Bookmark /> {t('Save code')}</button>
       </div>
-      {!payload && <p className="creator-validation" role="status">{mode === 'wifi' ? 'Enter a network name to generate this code.' : mode === 'contact' ? 'Enter at least one contact detail to generate this code.' : mode === 'link' && fields.url ? 'Enter a valid HTTP or HTTPS website address.' : 'Enter content to generate this code.'}</p>}
+      {!payload && <p className="creator-validation" id="creator-validation" role="status">{mode === 'wifi' ? 'Enter a network name to generate this code.' : mode === 'contact' ? 'Enter at least one contact detail to generate this code.' : mode === 'link' && fields.url ? 'Enter a valid HTTP or HTTPS website address.' : 'Enter content to generate this code.'}</p>}
       <p className="privacy-note"><LockKeyhole size={14} /> {t('Static codes are generated entirely on your device.')}</p>
     </div>
   );
@@ -962,12 +985,12 @@ function KindIcon({ kind, large = false }: { kind: SavedItem['kind']; large?: bo
   return <span className={`kind-icon kind-${kind} ${large ? 'large' : ''}`}>{icon}</span>;
 }
 
-function Field({ label, value, placeholder, icon, onChange, type = 'text' }: { label: string; value: string; placeholder: string; icon: React.ReactNode; onChange: (value: string) => void; type?: string }) {
-  return <label className="field"><span>{label}</span><div>{icon}<input type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} /></div></label>;
+function Field({ label, value, placeholder, icon, onChange, type = 'text', inputMode, autoComplete, required = false, invalid = false, describedBy }: { label: string; value: string; placeholder: string; icon: React.ReactNode; onChange: (value: string) => void; type?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']; autoComplete?: string; required?: boolean; invalid?: boolean; describedBy?: string }) {
+  return <label className="field"><span>{label}{required ? ' (required)' : ''}</span><div className={invalid ? 'field-invalid' : undefined}>{icon}<input type={type} inputMode={inputMode} value={value} placeholder={placeholder} autoComplete={autoComplete} required={required} aria-invalid={invalid || undefined} aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)} /></div></label>;
 }
 
-function TextField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange: (value: string) => void }) {
-  return <label className="field"><span>{label}</span><textarea value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} /></label>;
+function TextField({ label, value, placeholder, onChange, required = false, invalid = false, describedBy }: { label: string; value: string; placeholder: string; onChange: (value: string) => void; required?: boolean; invalid?: boolean; describedBy?: string }) {
+  return <label className="field"><span>{label}{required ? ' (required)' : ''}</span><textarea value={value} placeholder={placeholder} required={required} aria-invalid={invalid || undefined} aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)} /></label>;
 }
 
 function FeatureCard({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {

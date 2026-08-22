@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import {
   ArrowLeft,
@@ -73,6 +73,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
   const [teamOpen, setTeamOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const returnWorkspaceIdRef = useRef<string | undefined>(undefined);
 
   const selected = collections.find((item) => item.id === selectedId);
 
@@ -81,6 +82,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
     const collection = collections.find((item) => item.id === target.collectionId);
     const record = collection?.records.find((item) => item.id === target.recordId);
     if (collection && record) {
+      returnWorkspaceIdRef.current = collection.id;
       setSelectedId(collection.id);
       setRecordTarget(target);
     } else {
@@ -88,6 +90,31 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
     }
     onTargetHandled();
   }, [target, collections, onNotice, onTargetHandled]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (selectedId) {
+        const heading = document.querySelector<HTMLElement>('.track-screen .collection-heading h1');
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus({ preventScroll: true });
+        }
+        return;
+      }
+
+      const previousId = returnWorkspaceIdRef.current;
+      const previousWorkspace = previousId
+        ? [...document.querySelectorAll<HTMLButtonElement>('.workspace-list [data-workspace-id]')]
+          .find((button) => button.dataset.workspaceId === previousId)
+        : undefined;
+      const fallbackHeading = document.querySelector<HTMLElement>('.track-screen .track-intro h1');
+      const targetElement = previousWorkspace ?? fallbackHeading;
+      if (!targetElement) return;
+      if (targetElement === fallbackHeading) targetElement.tabIndex = -1;
+      targetElement.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedId]);
 
   const replaceCollection = (updated: TrackCollection): boolean => onCollections((current) => current.map((item) => item.id === updated.id ? updated : item));
   const updateCollection = (id: string, change: (current: TrackCollection) => TrackCollection): boolean => onCollections((current) => {
@@ -106,7 +133,10 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
       {!selected ? (
         <TrackOverview
           collections={collections}
-          onOpen={setSelectedId}
+          onOpen={(id) => {
+            returnWorkspaceIdRef.current = id;
+            setSelectedId(id);
+          }}
           onNew={() => { if (collections.length < maxTrackWorkspaces) setNewWorkspace(true); }}
           onRestore={() => setRestoreOpen(true)}
           alertCount={deriveAlerts(collections, business).length}
@@ -139,6 +169,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
           onClose={() => setNewWorkspace(false)}
           onCreate={(collection) => {
             if (!onCollections((current) => [collection, ...current])) return;
+            returnWorkspaceIdRef.current = collection.id;
             setSelectedId(collection.id);
             setNewWorkspace(false);
             onNotice('Workspace created');
@@ -151,7 +182,7 @@ export function Track({ collections, onCollections, target, onTargetHandled, onN
       {reportsOpen && <ReportsSheet collections={collections} onClose={() => setReportsOpen(false)} onNotice={onNotice} />}
       {teamOpen && <TeamSheet state={business} onState={onBusiness} onClose={() => setTeamOpen(false)} onNotice={onNotice} />}
       {automationsOpen && <AutomationsSheet state={business} onState={onBusiness} onClose={() => setAutomationsOpen(false)} onNotice={onNotice} />}
-      {alertsOpen && <AlertsSheet collections={collections} state={business} onClose={() => setAlertsOpen(false)} onOpenRecord={(collectionId, recordId) => { setSelectedId(collectionId); setRecordTarget({ collectionId, recordId }); }} />}
+      {alertsOpen && <AlertsSheet collections={collections} state={business} onClose={() => setAlertsOpen(false)} onOpenRecord={(collectionId, recordId) => { returnWorkspaceIdRef.current = collectionId; setSelectedId(collectionId); setRecordTarget({ collectionId, recordId }); }} />}
       {newRecord && selected && (
         <RecordSheet
           collection={selected}
@@ -227,7 +258,7 @@ function TrackOverview({ collections, onOpen, onNew, onRestore, alertCount, onRe
         </div>
       ) : (
         <div className="workspace-list">{collections.map((collection) => (
-          <button key={collection.id} onClick={() => onOpen(collection.id)}>
+          <button key={collection.id} data-workspace-id={collection.id} onClick={() => onOpen(collection.id)}>
             <TemplateIcon template={collection.template} />
             <span><strong>{collection.name}</strong><small>{templateInfo[collection.template].label} · {collection.records.length} records</small></span>
             <ChevronRight />
@@ -312,7 +343,7 @@ function WorkspaceSheet({ onClose, onCreate }: { onClose: () => void; onCreate: 
     <Sheet label="Create operations workspace" onClose={onClose}>
       <span className="sheet-kicker">QRY Track</span><h2>{t('Choose a workflow')}</h2><p className="sheet-description">Workspaces stay on this device unless you explicitly export them.</p>
       <div className="template-options">{(Object.keys(templateInfo) as TrackTemplate[]).map((item) => <button className={template === item ? 'active' : ''} aria-pressed={template === item} key={item} onClick={() => setTemplate(item)}><TemplateIcon template={item} /><span><strong>{templateInfo[item].label}</strong><small>{templateInfo[item].description}</small></span>{template === item && <Check />}</button>)}</div>
-      <label className="track-field"><span>{t('Workspace name')}</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={template === 'attendance' ? 'Morning class' : template === 'inventory' ? 'Main storeroom' : 'Workshop assets'} /></label>
+        <label className="track-field"><span>{t('Workspace name')} (required)</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} placeholder={template === 'attendance' ? 'Morning class' : template === 'inventory' ? 'Main storeroom' : 'Workshop assets'} /></label>
       <button className="solid-button full" disabled={!name.trim()} onClick={submit}>{t('Create workspace')} <ChevronRight /></button>
     </Sheet>
   );
@@ -336,6 +367,7 @@ function RecordSheet({ collection, onClose, onCreate }: { collection: TrackColle
   const quantityValue = boundedWholeNumber(quantity, 1_000_000);
   const intervalValue = interval ? boundedWholeNumber(interval, 3650) : undefined;
   const validNumbers = quantityValue !== undefined && (!interval || intervalValue !== undefined);
+  const numberError = 'Use whole numbers from 0–1,000,000 for quantity and 0–3,650 for repeat days.';
   const submit = () => {
     if (!validNumbers) return;
     onCreate({
@@ -355,20 +387,20 @@ function RecordSheet({ collection, onClose, onCreate }: { collection: TrackColle
     <Sheet label="Add record" onClose={onClose}>
       <span className="sheet-kicker">{code}</span><h2>{t('Add a record')}</h2><p className="sheet-description">A permanent QRY label is created with it.</p>
       <div className="record-form">
-        <label className="track-field"><span>{t('Name')}</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={collection.template === 'attendance' ? 'Student name' : collection.template === 'inventory' ? 'Item name' : 'Asset name'} /></label>
+        <label className="track-field"><span>{t('Name')} (required)</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} placeholder={collection.template === 'attendance' ? 'Student name' : collection.template === 'inventory' ? 'Item name' : 'Asset name'} /></label>
         <label className="track-field"><span>{t('Location')}</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Optional location" /></label>
-        {collection.template === 'inventory' && <label className="track-field"><span>Starting quantity</span><input type="number" min="0" max="1000000" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>}
+        {collection.template === 'inventory' && <label className="track-field"><span>Starting quantity</span><input type="number" min="0" max="1000000" step="1" value={quantity} aria-invalid={quantityValue === undefined} aria-describedby={quantityValue === undefined ? 'record-number-error' : undefined} onChange={(event) => setQuantity(event.target.value)} /></label>}
         {advanced && <>
           <label className="track-field"><span>Assigned to / host</span><input value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder="Person or team" /></label>
           <div className="record-form-grid"><label className="track-field"><span>Due date</span><input type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label><label className="track-field"><span>Priority</span><select value={priority} onChange={(event) => setPriority(event.target.value as TrackRecord['priority'])}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label></div>
-          <label className="track-field"><span>Repeat every (days)</span><input type="number" min="0" max="3650" value={interval} onChange={(event) => setInterval(event.target.value)} placeholder="Leave blank for one-off" /></label>
+          <label className="track-field"><span>Repeat every (days)</span><input type="number" min="0" max="3650" value={interval} aria-invalid={Boolean(interval) && intervalValue === undefined} aria-describedby={interval && intervalValue === undefined ? 'record-number-error' : undefined} onChange={(event) => setInterval(event.target.value)} placeholder="Leave blank for one-off" /></label>
           <label className="track-field"><span>Checklist</span><textarea value={checklist} onChange={(event) => setChecklist(event.target.value)} placeholder={'One checkpoint per line\nCheck guard\nConfirm power cable'} /></label>
           {['visitors', 'deliveries'].includes(collection.template) && <label className="track-field"><span>Contact</span><input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="Phone or email" /></label>}
           {['vehicles', 'rentals', 'deliveries', 'training'].includes(collection.template) && <label className="track-field"><span>Reference</span><input value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Registration, order, contract, or certificate" /></label>}
         </>}
         <label className="track-field"><span>{t('Notes')}</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional notes" /></label>
       </div>
-      {!validNumbers && <p className="deployment-error">Use whole numbers from 0–1,000,000 for quantity and 0–3,650 for repeat days.</p>}
+      {!validNumbers && <p className="deployment-error" id="record-number-error" role="alert">{numberError}</p>}
       <button className="solid-button full" disabled={!name.trim() || !validNumbers} onClick={submit}>{t('Create record and code')} <QrCode /></button>
     </Sheet>
   );
@@ -386,6 +418,7 @@ function RecordActionSheet({ collection, record, onClose, onDelete, onAction }: 
   const [evidence, setEvidence] = useState('');
   const [performedBy, setPerformedBy] = useState(record.assignee ?? '');
   const [photoDataUrl, setPhotoDataUrl] = useState('');
+  const [photoError, setPhotoError] = useState('');
   useEffect(() => {
     QRCode.toDataURL(payload, { width: 540, margin: 3, errorCorrectionLevel: 'H', color: { dark: '#173f35', light: '#fffdf7' } }).then(setQrImage);
   }, [payload]);
@@ -404,7 +437,7 @@ function RecordActionSheet({ collection, record, onClose, onDelete, onAction }: 
       <div className="record-sheet-head"><TemplateIcon template={collection.template} /><span><small>{record.code}</small><h2>{record.name}</h2></span></div>
       <div className="record-meta"><span><small>{t('Status')}</small><strong>{humanStatus(record.status)}</strong></span>{collection.template === 'inventory' && <span><small>{t('Quantity')}</small><strong>{record.quantity}</strong></span>}{record.location && <span><small>{t('Location')}</small><strong><MapPin /> {record.location}</strong></span>}{record.dueAt && <span><small>Due</small><strong>{new Date(record.dueAt).toLocaleDateString()}</strong></span>}</div>
       {record.checklist?.length ? <div className="record-checklist"><span>CHECKLIST</span>{record.checklist.map((item) => <label key={item}><Check /> {item}</label>)}</div> : null}
-      {evidenceActions && <><div className="inspection-evidence"><label><span>Performed by</span><input value={performedBy} onChange={(event) => setPerformedBy(event.target.value)} placeholder="Name or team" /></label><label><span>Evidence notes</span><textarea value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Condition, readings, issues, or proof notes" /></label></div><label className="evidence-photo"><span>{photoDataUrl ? <img src={photoDataUrl} alt="Evidence preview" /> : <QrCode />}</span><strong>{photoDataUrl ? 'Evidence photo ready' : 'Add evidence photo'}</strong><small>Camera or image · compressed on device</small><input type="file" accept="image/*" capture="environment" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; try { setPhotoDataUrl(await resizeEvidencePhoto(file)); } catch (error) { setEvidence(error instanceof Error ? error.message : 'Photo could not be read.'); } }} /></label>{photoDataUrl && <button type="button" className="secondary-button remove-evidence-photo" onClick={() => setPhotoDataUrl('')}>Remove pending photo</button>}</>}
+      {evidenceActions && <><div className="inspection-evidence"><label><span>Performed by</span><input value={performedBy} onChange={(event) => setPerformedBy(event.target.value)} placeholder="Name or team" /></label><label><span>Evidence notes</span><textarea value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Condition, readings, issues, or proof notes" /></label></div><label className={`evidence-photo ${photoError ? 'invalid' : ''}`}><span>{photoDataUrl ? <img src={photoDataUrl} alt="Evidence preview" /> : <QrCode />}</span><strong>{photoDataUrl ? 'Evidence photo ready' : 'Add evidence photo'}</strong><small>Camera or image · compressed on device</small><input type="file" accept="image/*" capture="environment" aria-invalid={Boolean(photoError)} aria-describedby={photoError ? 'evidence-photo-error' : undefined} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setPhotoError(''); try { setPhotoDataUrl(await resizeEvidencePhoto(file)); } catch (error) { setPhotoError(error instanceof Error ? error.message : 'Photo could not be read.'); } }} /></label>{photoError && <p className="deployment-error evidence-photo-error" id="evidence-photo-error" role="alert">{photoError}</p>}{photoDataUrl && <button type="button" className="secondary-button remove-evidence-photo" onClick={() => { setPhotoDataUrl(''); setPhotoError(''); }}>Remove pending photo</button>}</>}
       <div className="quick-actions"><span>QUICK ACTION</span><div>{actions.map((action) => <button key={action.id} onClick={() => onAction(action.id, { notes: evidence, performedBy, photoDataUrl: photoDataUrl || undefined })}>{action.icon}<strong>{action.label}</strong></button>)}</div></div>
       {record.inspections?.length ? <details className="inspection-history"><summary>Inspection and completion history ({record.inspections.length})</summary>{record.inspections.slice(0, 8).map((item) => <div key={item.id}>{item.photoDataUrl ? <img src={item.photoDataUrl} alt="Inspection evidence" /> : <StatusDot status={item.result} />}<span><strong>{humanStatus(item.result)} · {item.performedBy}</strong><small>{item.notes || 'No evidence note'} · {relativeTime(item.createdAt)}</small></span></div>)}</details> : null}
       <details className="label-preview"><summary><QrCode /> {t('View printable label')}</summary><div>{qrImage && <img src={qrImage} alt={`QR code for ${record.name}`} />}<strong>{record.name}</strong><small>{record.code} · Scan with QRY</small></div></details>

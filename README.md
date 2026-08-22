@@ -52,8 +52,13 @@ The browser client defaults to `http://127.0.0.1:8787`. Server data is stored in
 ```powershell
 npm run test
 npm run lint
+npm run server:typecheck -- --noEmit
+npm run server:build
 npm run build
+python scripts/prepare-play-screenshots.py
 ```
+
+GitHub Actions runs the same web, server, Play-asset, dependency-audit, and Android debug-candidate checks for pushes to `main` and pull requests.
 
 ## Android
 
