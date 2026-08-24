@@ -23,7 +23,7 @@ Development defaults to Google's official Android test app and adaptive-banner I
 
 Read-only verification on **August 24, 2026** established the following current AdMob state:
 
-- the publisher account is approved and the Policy center reports no current issues;
+- the publisher account is open and approved, the Policy center reports no current issues, and the verified publisher ID is `pub-9959568404035601`;
 - the QRYverse Android app already exists with public App ID `ca-app-pub-9959568404035601~1687483116`;
 - QRYverse has no Play store details, is marked **Requires review**, and has no ad unit yet;
 - the banner form is staged as `QRYverse Home & Library Banner` with partner bidding off, text/image/rich-media and video enabled, Google-optimized refresh, and Google-optimized eCPM using all prices, but **Create ad unit has not been pressed**;
@@ -54,8 +54,8 @@ For UMP QA only, register the hashed Android device ID, keep test mode enabled, 
 1. Link the exact Play listing after it exists and resolve AdMob's app-readiness review.
 2. Create and publish the applicable European regulations, US state regulations, and IDFA messages in **Privacy & messaging**. QRYverse is Android-only today, so IDFA is relevant only if an iOS build is added.
 3. Confirm the Google Play Target audience as **18 and over only** and make the AdMob audience/treatment declarations consistent with that adult-only launch. Do not set child-directed or under-age-of-consent request tags without an age gate or another reliable user-age signal.
-4. Add the public developer website to the Play listing and publish a real `app-ads.txt` at its domain root.
-5. Replace `public/app-ads.txt.example` with the exact AdMob-authorized-seller line from the account and verify it in AdMob.
+4. Add the approved public developer website to the Play listing and publish the checked-in `public/app-ads.txt` at that domain root.
+5. Verify that the public file returns HTTP 200 as plain text, exactly matches the account publisher ID, and reaches **Authorized** status in AdMob.
 6. Complete Play's Ads, Advertising ID, Data safety, Target audience, Content rating, and Families declarations from the exact production AAB.
 
 ## Release tests
