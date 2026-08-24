@@ -72,4 +72,23 @@ Then run the instrumentation suite and test camera permission grant/denial, live
 
 The `android:local-bundle` command prepares a release bundle, but it is not a substitute for configuring and verifying a private release signing identity.
 
+## Manual GitHub signed-candidate workflow
+
+`.github/workflows/android-release.yml` is intentionally manual and targets the protected `play-production` GitHub environment. Configure environment approval rules before enabling it. The workflow builds and retains a signed AAB; it does not upload to Play, create a release, or roll out to users.
+
+Required environment secrets:
+
+- `QRY_UPLOAD_KEYSTORE_BASE64` — base64-encoded upload keystore;
+- `QRY_UPLOAD_STORE_PASSWORD`;
+- `QRY_UPLOAD_KEY_ALIAS`;
+- `QRY_UPLOAD_KEY_PASSWORD`.
+
+Required environment variables:
+
+- `QRY_ADMOB_APP_ID`;
+- `VITE_ADMOB_BANNER_ID`;
+- `QRY_EXPECTED_APK_CERT_SHA256` — SHA-256 fingerprint of the upload certificate.
+
+The workflow fails unless the strict Play asset set, high-severity dependency gates, production AdMob profile, UMP release profile, cloud-off build profile, finalized legal pages, signing inputs, and expected certificate all agree. It verifies the AAB JAR signature, records the exact bundle and certificate hashes, uploads the candidate and evidence for 30 days, and removes the temporary keystore from the runner. Download the artifact into the private release record; never commit it or the keystore.
+
 Subscriptions are intentionally outside the first release. If they are added later, follow `PLAY_BILLING_SETUP.md` and re-run policy, manifest, Data safety, purchase, restore, cancellation, grace-period, expiry, and offline-entitlement verification for that new binary.
