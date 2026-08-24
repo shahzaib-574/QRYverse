@@ -29,6 +29,7 @@ Read-only verification on **August 24, 2026** established the following current 
 - the banner form is staged as `QRYverse Home & Library Banner` with partner bidding off, text/image/rich-media and video enabled, Google-optimized refresh, and Google-optimized eCPM using all prices, but **Create ad unit has not been pressed**;
 - no European-regulations or US-state-regulations privacy message exists yet;
 - the app currently inherits the account-level **MA** maximum ad-content rating. The documented **G** app-level setting is staged but has not been saved.
+- the developer website currently configured in Play is reachable over HTTPS, but its root `/app-ads.txt` returned a branded 404 during the August 24 check. The repository file is ready; publication and AdMob crawler authorization are still pending.
 
 Creating the banner, saving the G rating, creating/publishing privacy messages, linking the eventual Play listing, and requesting review are external account changes and require explicit owner confirmation at the action point.
 

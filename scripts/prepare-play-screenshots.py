@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCREENSHOT_DIR = ROOT / "store-assets" / "screenshots"
 PLAY_ICON = ROOT / "store-assets" / "qryverse-play-icon-512.png"
 FEATURE_GRAPHIC = ROOT / "store-assets" / "qryverse-feature-graphic-1024x500.png"
+APP_ADS = ROOT / "public" / "app-ads.txt"
+EXPECTED_APP_ADS_LINE = "google.com, pub-9959568404035601, DIRECT, f08c47fec0942fa0"
 EXPECTED = (
     "01-home.png",
     "02-scan-result.png",
@@ -75,6 +77,13 @@ def main() -> None:
     if feature_format != "PNG" or feature_mode != "RGB" or feature_size != (1024, 500):
         raise SystemExit(f"Feature graphic must be a 1024x500 24-bit RGB PNG; got {feature_format} {feature_mode} {feature_size}")
     print(f"{FEATURE_GRAPHIC.relative_to(ROOT)}  {feature_size[0]}x{feature_size[1]}  {feature_mode}")
+
+    if not APP_ADS.is_file():
+        raise SystemExit("public/app-ads.txt is required")
+    app_ads_text = APP_ADS.read_text(encoding="utf-8").strip()
+    if app_ads_text != EXPECTED_APP_ADS_LINE:
+        raise SystemExit("public/app-ads.txt does not match QRYverse's verified AdMob publisher line")
+    print(f"{APP_ADS.relative_to(ROOT)}  verified publisher line")
 
     sources = sorted(SCREENSHOT_DIR.glob("*.png"))
     names = tuple(source.name for source in sources)
