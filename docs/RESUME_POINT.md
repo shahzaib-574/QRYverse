@@ -19,6 +19,7 @@ This checkpoint preserves the active objective: finish QRYverse as a production-
 ## External state left untouched
 
 - The QRYverse AdMob app exists, but no banner unit has been created. A `QRYverse Home & Library Banner` form and the documented G maximum-rating override are staged in separate tabs; neither irreversible action has been saved. No privacy message or Play-store link exists.
+- The selected Play developer account is personal and already has two production apps. QRYverse is absent; `com.royal.qrystudio` is available but unregistered. Its Create App form is staged as en-US, App, Free, with automatic protection on; both owner declarations are unchecked and the app has not been created.
 - No new commits were pushed to GitHub.
 - No Play Console form, listing, release, tester track, or production rollout was created or changed.
 - The local browser preview remains available at `http://127.0.0.1:4174/` while its server process remains running.
