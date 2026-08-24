@@ -55,8 +55,10 @@ Then run the instrumentation suite and test camera permission grant/denial, live
    $env:QRY_UPLOAD_STORE_PASSWORD = "..."
    $env:QRY_UPLOAD_KEY_ALIAS = "qryverse-upload"
    $env:QRY_UPLOAD_KEY_PASSWORD = "..."
+   npm run android:release-preflight
    npm run android:local-bundle
    ```
+   The preflight uses the same fail-closed release contract as the signed bundle and reports missing signing inputs, mismatched or test advertising IDs, enabled AdMob test mode, UMP debug overrides, Cloud enablement, stale synchronized build-profile data, and unresolved legal markers before bundle packaging.
 4. Use Bundletool to confirm the signed AAB reports `PAGE_ALIGNMENT_16K`, generate a universal APK from that exact bundle, and run `scripts/android-binary-audit.ps1 -ApkPath <universal.apk> -ArtifactProfile Production` against it. Before running the production audit, set `QRY_ADMOB_APP_ID`, `VITE_ADMOB_BANNER_ID`, and `QRY_EXPECTED_APK_CERT_SHA256` to the exact approved values; the audit compares them byte-for-byte with the packaged App ID/banner and signer certificate. Re-check device-specific splits and the Play Console native-library warning after upload.
 5. Increase `versionCode` for every Play upload and set the intended public `versionName`.
 6. Replace the AdMob test App ID/banner with the production QRYverse IDs, configure UMP messages and `app-ads.txt`, then verify placement and consent on hardware. See `ADMOB_RELEASE_SETUP.md`.

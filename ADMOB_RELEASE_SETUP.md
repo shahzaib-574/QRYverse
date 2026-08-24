@@ -19,12 +19,25 @@ Android app advertising is configured through **Google AdMob**. AdSense is the u
 
 Development defaults to Google's official Android test app and adaptive-banner IDs. Never click a live ad during testing.
 
+## Observed console state
+
+Read-only verification on **August 24, 2026** established the following current AdMob state:
+
+- the publisher account is approved and the Policy center reports no current issues;
+- the QRYverse Android app already exists with public App ID `ca-app-pub-9959568404035601~1687483116`;
+- QRYverse has no Play store details, is marked **Requires review**, and has no ad unit yet;
+- the banner form is staged as `QRYverse Home & Library Banner` with partner bidding off, text/image/rich-media and video enabled, Google-optimized refresh, and Google-optimized eCPM using all prices, but **Create ad unit has not been pressed**;
+- no European-regulations or US-state-regulations privacy message exists yet;
+- the app currently inherits the account-level **MA** maximum ad-content rating. The documented **G** app-level setting is staged but has not been saved.
+
+Creating the banner, saving the G rating, creating/publishing privacy messages, linking the eventual Play listing, and requesting review are external account changes and require explicit owner confirmation at the action point.
+
 ## Production IDs
 
-Create one Android app and one banner ad unit in AdMob, then supply public configuration at build time:
+Create the staged banner ad unit, then supply the existing public app ID and the generated banner ID at build time:
 
 ```powershell
-$env:QRY_ADMOB_APP_ID = "ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY"
+$env:QRY_ADMOB_APP_ID = "ca-app-pub-9959568404035601~1687483116"
 $env:VITE_ADMOB_BANNER_ID = "ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ"
 $env:VITE_ADMOB_TEST_MODE = "false"
 $env:VITE_ADMOB_TEST_DEVICE_IDS = ""

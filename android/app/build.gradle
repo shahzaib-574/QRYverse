@@ -134,6 +134,14 @@ def validateReleaseConfiguration = {
     }
 }
 
+tasks.register("verifyReleaseConfiguration") {
+    group = "verification"
+    description = "Fails unless signing, advertising, build-profile, and legal inputs are ready for a production release."
+    doLast {
+        validateReleaseConfiguration()
+    }
+}
+
 gradle.taskGraph.whenReady { graph ->
     def releaseArtifactRequested = graph.allTasks.any { task ->
         task.project == project && task.name.toLowerCase() ==~ /.*(assemble|bundle|package|sign|publish).*release.*/

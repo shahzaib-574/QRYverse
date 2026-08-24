@@ -27,6 +27,7 @@
     "android:local-lint": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 lintDebug",
     "android:local-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 testDebugUnitTest",
     "android:local-instrumentation-apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 assembleDebugAndroidTest",
+    "android:release-preflight": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 verifyReleaseConfiguration",
     "android:audit-debug": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-binary-audit.ps1 -ArtifactProfile Debug",
     "android:local-bundle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-local-build.ps1 bundleRelease",
     "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease"

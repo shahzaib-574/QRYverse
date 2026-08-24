@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('clean', 'verifyDebug', 'assembleDebug', 'assembleDebugAndroidTest', 'bundleRelease', 'lintDebug', 'testDebugUnitTest')]
+  [ValidateSet('clean', 'verifyDebug', 'verifyReleaseConfiguration', 'assembleDebug', 'assembleDebugAndroidTest', 'bundleRelease', 'lintDebug', 'testDebugUnitTest')]
   [string]$Task = 'assembleDebug'
 )
 
