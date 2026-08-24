@@ -2,7 +2,7 @@
 
 Audit date: **August 22, 2026**
 
-Audited revision: `00feabe`
+Audited application revision: `00feabe`; release evidence revalidated August 24, 2026
 
 Package: `com.royal.qrystudio`
 
@@ -26,9 +26,9 @@ This is an evidence index and release gate, not a statement that Play Console su
 | Requirement | Current QRYverse evidence | Status | Exact closure evidence |
 | --- | --- | --- | --- |
 | App name, short description, and full description limits | `GOOGLE_PLAY_LISTING.md` contains a 20-character name, 70-character short description, and 2,182-character full description. Current Play limits are 30, 80, and 4,000 characters respectively. Copy accurately describes the cloud-off, ad-supported profile and avoids ranking/price claims. | **Proven in repository; Console entry pending** | Screenshot/export of the en-US Main store listing after the text is entered and proofread. |
-| Store icon | `store-assets/qryverse-play-icon-512.png` validates as 512 × 512 RGBA PNG and is 13,047 bytes, below Play's 1,024 KB limit. | **Proven in repository; Console upload pending** | Main store listing shows the exact checked-in icon. |
+| Store icon | `store-assets/qryverse-play-icon-512.png` validates as a 512 × 512 RGBA PNG with an embedded sRGB ICC profile and is 13,423 bytes, below Play's 1,024 KB limit. Profile tagging preserved the exact decoded pixels. | **Proven in repository; Console upload pending** | Main store listing shows the exact checked-in icon with SHA-256 `CE0C7D257D996E21810EE97027CFD89F50DF8624686C92779FA396455135D0E4`. |
 | Feature graphic | `store-assets/qryverse-feature-graphic-1024x500.png` validates as 1024 × 500 24-bit RGB PNG. Its central abstract QR composition has no price, rank, Play badge, or unsupported textual claim. | **Proven in repository; Console upload pending** | Main store listing shows the exact checked-in graphic and its final alt text. |
-| Phone screenshot technical rules | Eight checked-in files validate as 719 × 1278 24-bit RGB PNGs without alpha. They satisfy Play's minimum two screenshots, 320–3840 px dimension range, and 2:1 maximum-dimension ratio. | **Proven only for mandatory file constraints** | Run `python scripts/prepare-play-screenshots.py` against the final set and attach its output. |
+| Phone screenshot technical rules | Eight checked-in files validate as 719 × 1278 24-bit RGB PNGs without alpha. They satisfy Play's minimum two screenshots, 320–3840 px dimension range, and 2:1 maximum-dimension ratio. | **Proven only for mandatory file constraints** | Run `npm run play:assets:release` against the final signed-device set and attach its output. |
 | Phone screenshot truthfulness and quality | The set is explicitly documented as provisional browser capture. `03-create.png` shows an empty placeholder and disabled actions, not the planned live generated QR state. `04-library.png` visibly clips the app navigation. The 719 px width also misses Play's recommendation-surface threshold of at least four 1080 × 1920 portrait screenshots. | **Replace before upload** | Capture all final frames from the exact signed candidate with fictional data and no test ads/debug UI. Recapture at least four at 1080 × 1920 or higher rather than upscaling. Verify `03` shows a generated code and enabled action, `04` shows the complete viewport/navigation, and no important UI is obscured by the bottom bar. Add factual alt text of 140 characters or fewer in Console. |
 | Android App Bundle and version | Source declares package `com.royal.qrystudio`, version `1.0`/`1`. Only debug APKs exist under `android/app/build/outputs`; no production `.aab` is present. The Gradle release gate requires owner signing secrets, production AdMob IDs, cloud-off assets, and resolved legal pages. | **External blocker / Final-artifact proof pending** | Signed production AAB, upload-certificate SHA-256, bundle SHA-256, Play App Signing enrollment, and App Bundle Explorer inspection. Increment `versionCode` for any later upload. |
 | Target API | `android/variables.gradle` sets `compileSdkVersion = 36` and `targetSdkVersion = 36`. The current debug APK independently reports compile/target API 36 through `npm run android:audit-debug`. This meets the Android 16/API 36 rule taking effect August 31, 2026. | **Proven in source/debug; Final-artifact proof pending** | App Bundle Explorer for the exact production AAB reports target API 36. |
@@ -88,7 +88,7 @@ Create a private release record outside the public repository containing:
 ## Reproducible checks run in this audit
 
 ```powershell
-python scripts/prepare-play-screenshots.py
+npm run play:assets
 npm run android:audit-debug
 Get-FileHash android/app/build/outputs/apk/debug/app-debug.apk -Algorithm SHA256
 ```

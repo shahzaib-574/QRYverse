@@ -11,7 +11,7 @@ The eight numbered files in this directory are 719 × 1278 RGB PNG browser captu
 7. `07-operations.png` — local reporting summary
 8. `08-studio.png` — campaigns, backup, and business tools
 
-When the browser capture API returns JPEG bytes, import the eight explicitly named `.jpg` files as real PNG assets, then validate the canonical set:
+Import one `.png`, `.jpg`, or `.jpeg` capture for each explicitly named stem. The importer accepts native Android PNG screenshots as well as browser JPEG captures, normalizes them to 24-bit RGB PNG without resizing, and rejects duplicates:
 
 ```powershell
 python scripts/import-play-screenshots.py "C:\path\to\canonical-browser-captures"
@@ -20,6 +20,15 @@ python scripts/import-play-screenshots.py "C:\path\to\canonical-browser-captures
 ```powershell
 python scripts/prepare-play-screenshots.py
 ```
+
+For the signed production capture set, use both strict gates:
+
+```powershell
+python scripts/import-play-screenshots.py "C:\path\to\signed-android-captures" --release
+python scripts/prepare-play-screenshots.py --release
+```
+
+Strict validation requires every portrait frame to be at least 1080 × 1920 and requires the Play icon to carry explicit sRGB/ICC metadata. It cannot prove that pixels were captured natively rather than upscaled, so retain the signed-artifact and device provenance described in the audit.
 
 The importer converts pixels without resizing; the validator rejects mislabeled formats, wrong dimensions, wrong color modes, or an incomplete set. Recapture from the exact signed release candidate before final Play submission and whenever visible UI changes. Never include test ads, personal account data, private QR payloads, browser chrome, or debug overlays.
 

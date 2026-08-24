@@ -55,7 +55,7 @@ npm run lint
 npm run server:typecheck -- --noEmit
 npm run server:build
 npm run build
-python scripts/prepare-play-screenshots.py
+npm run play:assets
 npm audit --omit=dev --audit-level=high
 ```
 

@@ -1,10 +1,10 @@
 # QRYverse Google Play asset audit
 
-Audit date: 2026-08-22
+Audit date: 2026-08-22; technical revalidation: 2026-08-24
 
 ## Release verdict
 
-The checked-in icon, feature graphic, and eight phone screenshots pass Google Play's basic file-format and dimension gates. They are **not yet the final production upload set**:
+The checked-in icon, feature graphic, and eight phone screenshots pass Google Play's basic file-format and dimension gates. The icon now carries an explicit sRGB ICC profile. The screenshots are **not yet the final production upload set**:
 
 - all phone frames are provisional browser captures rather than captures from the signed Android release candidate;
 - all eight are 719 x 1278, so they satisfy the ordinary phone screenshot gate but do not satisfy the 1080 x 1920 minimum recommended for screenshot-driven Play recommendation formats;
@@ -25,11 +25,11 @@ Current Play guidance permits up to eight screenshots per supported device type 
 
 ## Exact technical evidence
 
-`python scripts/prepare-play-screenshots.py` completed successfully during this audit. Pillow decoded and verified every PNG.
+`npm run play:assets` completed successfully during this audit. Pillow decoded and verified every PNG.
 
 | File | Encoded format | Pixel mode | Dimensions | Bytes | SHA-256 |
 | --- | --- | --- | ---: | ---: | --- |
-| `qryverse-play-icon-512.png` | PNG | RGBA, 32-bit; alpha range 255-255 | 512 x 512 | 13,047 | `E653E66845A06F441FAFDF82D81B66F6DBE948A202104925F51B4A89031332E9` |
+| `qryverse-play-icon-512.png` | PNG | RGBA, 32-bit; alpha range 255-255; sRGB ICC | 512 x 512 | 13,423 | `CE0C7D257D996E21810EE97027CFD89F50DF8624686C92779FA396455135D0E4` |
 | `qryverse-feature-graphic-1024x500.png` | PNG | RGB, 24-bit; no alpha | 1024 x 500 | 511,440 | `400FBA2000671410A12B671BC1AA375D47DB5E792AD278C907297C5B9C05B076` |
 | `screenshots/01-home.png` | PNG | RGB, 24-bit; no alpha | 719 x 1278 | 313,383 | `9B3DA29C35917BCE79951B375F519710ABF65185E15C8B32EE0FBC4F41737DC5` |
 | `screenshots/02-scan-result.png` | PNG | RGB, 24-bit; no alpha | 719 x 1278 | 169,919 | `A6C69A2A431A9FF24D311355F1C28977C4CD97C1B0224C2C595DE03D8B00A46B` |
@@ -42,7 +42,7 @@ Current Play guidance permits up to eight screenshots per supported device type 
 
 The icon is far below Play's 1,024 KB limit. Its solid background is `#173F35`; non-background QR artwork occupies Pillow bounding box `(115, 115, 397, 397)`, centered within the 512-pixel square and comfortably inside the 384-pixel legacy keyline extent. It has no text, ranking badge, pre-rounded outer corners, or outer drop shadow. Although encoded as RGBA as required, every alpha value is opaque. That is appropriate for the full-bleed background.
 
-No checked-in PNG contains an embedded ICC, sRGB, EXIF, or DPI metadata block. Pixel values are consistent with an sRGB-oriented web workflow, but the files do not independently prove the icon's required sRGB color space. Final exports should be explicitly converted/tagged sRGB, then visually compared with the Android launcher icon.
+The Play icon contains an embedded sRGB ICC profile. `npm run play:icon:srgb` added the profile without changing its decoded RGBA pixels; the unchanged pixel SHA-256 is `1A782A997B7EA6CD83481C676A7FB3F7A9E28BD1DCC40FA962ADF5B74C896526`. The feature graphic and provisional screenshots do not carry color-profile metadata; final signed-device captures still require the color-space review in the recapture contract.
 
 The phone ratio is 719:1278 (approximately 9:16), the shortest dimension is 719, and 1278 is less than twice 719. The set therefore passes the ordinary screenshot geometry gate. The shortest dimension is below 1080, so none of the current frames qualifies for the higher-resolution recommendation format.
 
@@ -50,7 +50,7 @@ The phone ratio is 719:1278 (approximately 9:16), the shortest dimension is 719,
 
 ### Play icon
 
-**Pass, with color-profile verification pending.** The solid deep-green field is full bleed, while the cream-and-coral QR mark is centered and restrained. Play can apply its own mask and shadow without double rounding. Confirm an explicit sRGB export before upload.
+**Pass.** The solid deep-green field is full bleed, while the cream-and-coral QR mark is centered and restrained. Play can apply its own mask and shadow without double rounding. The checked-in PNG now carries an explicit sRGB ICC profile, and a post-tag visual inspection confirmed the artwork is unchanged.
 
 ### Feature graphic
 
@@ -100,4 +100,4 @@ Recommended first-four order after recapture: Home, safe result preview, generat
 
 ## Validator coverage note
 
-The current `prepare-play-screenshots.py` validator correctly checks decodability, encoded PNG format, exact icon/feature sizes, screenshot set completeness, RGB/RGBA modes, screenshot geometry, and consistent screenshot dimensions. It does not prove sRGB tagging, the icon byte ceiling, safe-zone composition, animation settlement, actual signed-build provenance, feature truthfulness, alt-text agreement, status-bar hygiene, or recommendation-format eligibility. Those items require the manual and signed-device checks above.
+The default `prepare-play-screenshots.py` validation checks decodability, encoded PNG format, the icon byte ceiling, exact icon/feature sizes, screenshot set completeness, RGB/RGBA modes, screenshot geometry, and consistent screenshot dimensions. Its `--release` mode additionally requires recommendation-resolution portrait screenshots and explicit sRGB/ICC metadata on the Play icon. The importer accepts native PNG or JPEG captures and has a matching `--release` resolution gate. Neither script can prove that pixels were captured natively rather than upscaled, or verify safe-zone composition, animation settlement, actual signed-build provenance, feature truthfulness, alt-text agreement, or status-bar hygiene; those items still require the manual and signed-device checks above.
